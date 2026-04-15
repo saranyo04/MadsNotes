@@ -1,0 +1,35 @@
+
+venv/
+.env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# VS Code
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Workspace (runtime data - IMPORTANT)
+workspace/
+
+# Temp files
+*.tmp
+*.temp
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+
+
+# Environment variables / secrets
+.env
