@@ -1,6 +1,5 @@
 import sys
 import os
-import webbrowser
 from app.shortcuts import install_shortcuts
 
 from PySide6.QtWidgets import (
@@ -71,9 +70,10 @@ class MainWindow(QWidget):
             html_path = process_text(text)
             full_path = os.path.abspath(html_path)
 
-            opened = webbrowser.open(f"file:///{full_path.replace(os.sep, '/')}")
-            if not opened:
-                QMessageBox.warning(self, "Browser Error", f"Could not open:\n{full_path}")
+            try:
+                os.startfile(full_path)
+            except Exception:
+                QMessageBox.warning(self, "Open Error", f"Could not open:\n{full_path}")
 
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))

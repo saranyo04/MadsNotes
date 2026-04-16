@@ -28,6 +28,7 @@ class EasterEggHandler(QObject):
         self.window = window
         self.target_widget = target_widget
         self.buffer = ""
+        self.easter_map = self.register_easter_eggs()
         self._label = None
         self._fade_anim = None
         target_widget.installEventFilter(self)
@@ -37,11 +38,18 @@ class EasterEggHandler(QObject):
             text = event.text()
             if text and text.isprintable():
                 self.buffer = (self.buffer + text.lower())[-10:]
-                if "rio" in self.buffer:
-                    self.buffer = ""
-                    self.show_message("我爱你 答胡雅")
+                for key, action in self.easter_map.items():
+                    if key in self.buffer:
+                        self.buffer = ""
+                        action()
+                        break
         return super().eventFilter(obj, event)
-
+    def register_easter_eggs(self):
+        return {
+            "rio": lambda: self.show_message("我爱你 答胡雅"),
+            "madhurjya": lambda: self.show_message("Hiya, I love you!"),
+        }
+        
     def show_message(self, text):
         label = QLabel(text, self.window)
         label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -62,11 +70,12 @@ class EasterEggHandler(QObject):
         label.setFont(font)
 
         label.adjustSize()
+        
+        x = self.window.width() - label.width() - 20
+        y = self.window.height() - label.height() - 20
 
-        x = (self.window.width() - label.width()) // 2
-        y = (self.window.height() - label.height()) // 2
-        x += random.randint(-40, 40) 
-        y += random.randint(-40, 40)
+        x += random.randint(-10, 10) 
+        y += random.randint(-10, 10)
         
         label.move(x, y)
         label.show()
@@ -76,7 +85,7 @@ class EasterEggHandler(QObject):
         label.setGraphicsEffect(effect)
 
         anim = QPropertyAnimation(effect, b"opacity", label)
-        anim.setDuration(1500)
+        anim.setDuration(2000)
         anim.setStartValue(1.0)
         anim.setEndValue(0.0)
 
