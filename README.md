@@ -7,8 +7,8 @@ A simple desktop tool to convert Chinese text and PDFs into clean, readable stud
 ## Download
 
 1. Go to the **Releases** section of this repository  
-2. Download the latest `.zip` or `.exe` file  
-3. Extract the zip (if needed)  
+2. Download the latest `.zip`
+3. Extract the zip 
 4. Double-click `MadChinese.exe` to run  
 
 No installation required.
