@@ -1,8 +1,4 @@
-Here is a **clean, simple, user-friendly README** focused on downloading the `.exe` (no technical clutter):
 
----
-
-```markdown
 # Mad's Chinese
 
 A simple desktop tool to convert Chinese text and PDFs into clean, readable study notes — optimized for use with browser extensions like Zhongwen.
@@ -66,6 +62,3 @@ Input → Structure → (Optional Edit) → HTML → Browser
 ## Author
 
 Built as a personal tool for Chinese language study.
-```
-
----
