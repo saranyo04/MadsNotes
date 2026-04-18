@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QUrl
+from PySide6.QtCore import QEvent, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,11 +22,16 @@ from app.shortcuts import install_shortcuts
 from core.document_editor import document_to_editor_text, editor_text_to_document
 from core.pipeline import process_text, read_pdf_text, render_document
 from core.text_structurer import DEFAULT_STRUCTURING_MODE, STRUCTURING_MODE_OPTIONS
+from utils.app_metadata import (
+    APP_NAME,
+    PDF_FILE_FILTER,
+    get_primary_workspace_path,
+)
 from utils.file_manager import delete_all_jobs
 
 
 class MainWindow(QWidget):
-    def __init__(self):
+    def __init__(self, initial_file_path: str | None = None):
         super().__init__()
 
         self.view_mode = "input"
@@ -65,7 +70,7 @@ class MainWindow(QWidget):
         """
         )
 
-        self.setWindowTitle("Chinese OCR Cleaner")
+        self.setWindowTitle(APP_NAME)
         self.resize(780, 640)
 
         main_layout = QVBoxLayout()
@@ -112,17 +117,7 @@ class MainWindow(QWidget):
 
         self.text_input = QPlainTextEdit()
         self.text_input.installEventFilter(self)
-        self.text_input.setPlaceholderText(
-            "Paste Chinese text here, upload a selectable PDF, or drag and drop a PDF.\n"
-            "Choose a structuring mode, then click Render HTML for a quick result.\n"
-            "If the result looks wrong, click Open Editor, fix the structured text, and render again.\n"
-            "Use Options to open the editor before render or reopen the last output/job folder.\n\n"
-            "Shortcuts:\n"
-            "Ctrl+Enter - Primary action\n"
-            "Ctrl+Shift+Enter - Render HTML\n"
-            "Ctrl+L - Clear text\n"
-            "Ctrl+W - Close app"
-        )
+        self.text_input.setPlaceholderText(self._input_placeholder_text())
 
         self.render_button = QPushButton("Render HTML")
         self.render_button.clicked.connect(self.handle_generate_html)
@@ -152,6 +147,22 @@ class MainWindow(QWidget):
         self.update_view_state()
         install_shortcuts(self)
 
+        if initial_file_path:
+            QTimer.singleShot(0, lambda: self.handle_launch_file(initial_file_path))
+
+    def _input_placeholder_text(self) -> str:
+        return (
+            "Paste Chinese text here, upload a selectable PDF, or drag and drop a PDF.\n"
+            "Choose a structuring mode, then click Render HTML for a quick result.\n"
+            "If the result looks wrong, click Open Editor, fix the structured text, and render again.\n"
+            "Use Options to open the editor before render or reopen the last output/job folder.\n\n"
+            "Shortcuts:\n"
+            "Ctrl+Enter - Primary action\n"
+            "Ctrl+Shift+Enter - Render HTML\n"
+            "Ctrl+L - Clear text\n"
+            "Ctrl+W - Close app"
+        )
+
     def update_view_state(self) -> None:
         in_editor = self.view_mode == "editor"
 
@@ -164,23 +175,10 @@ class MainWindow(QWidget):
                 "Edit the structured text here, then click Render HTML."
             )
         else:
-            self.text_input.setPlaceholderText(
-                "Paste Chinese text here, upload a selectable PDF, or drag and drop a PDF.\n"
-                "Choose a structuring mode, then click Render HTML for a quick result.\n"
-                "If the result looks wrong, click Open Editor, fix the structured text, and render again.\n"
-                "Use Options to open the editor before render or reopen the last output/job folder.\n\n"
-                "Shortcuts:\n"
-                "Ctrl+Enter - Primary action\n"
-                "Ctrl+Shift+Enter - Render HTML\n"
-                "Ctrl+L - Clear text\n"
-                "Ctrl+W - Close app"
-            )
+            self.text_input.setPlaceholderText(self._input_placeholder_text())
 
     def sync_quick_settings_menu(self) -> None:
-        has_output = bool(
-            self.last_output_path
-            and self.last_output_path.exists()
-        )
+        has_output = bool(self.last_output_path and self.last_output_path.exists())
         has_job_folder = bool(
             has_output
             and self.last_output_path is not None
@@ -272,6 +270,31 @@ class MainWindow(QWidget):
     def open_html(self, html_path: str) -> None:
         self.open_local_path(Path(html_path))
 
+    def handle_launch_file(self, file_path: str) -> None:
+        path = Path(file_path).expanduser()
+
+        if not path.exists():
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                f"Could not open file:\n{path}",
+            )
+            return
+
+        if path.suffix.lower() != ".pdf":
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                f"Mad's Chinese currently supports PDF launch files only.\n\nReceived:\n{path}",
+            )
+            return
+
+        try:
+            self._handle_pdf_file(str(path.resolve()))
+        except Exception as error:
+            QMessageBox.critical(self, APP_NAME, str(error))
+            print("ERROR:", repr(error))
+
     def eventFilter(self, obj, event):
         if obj is self.text_input and event.type() in {
             QEvent.DragEnter,
@@ -287,7 +310,7 @@ class MainWindow(QWidget):
                     try:
                         self._handle_pdf_file(pdf_path)
                     except Exception as error:
-                        QMessageBox.critical(self, "Error", str(error))
+                        QMessageBox.critical(self, APP_NAME, str(error))
                         print("ERROR:", repr(error))
                 return True
 
@@ -318,7 +341,7 @@ class MainWindow(QWidget):
         try:
             self._handle_pdf_file(pdf_path)
         except Exception as error:
-            QMessageBox.critical(self, "Error", str(error))
+            QMessageBox.critical(self, APP_NAME, str(error))
             print("ERROR:", repr(error))
 
     def handle_primary_action(self) -> None:
@@ -341,7 +364,7 @@ class MainWindow(QWidget):
             if not self._has_text():
                 QMessageBox.warning(
                     self,
-                    "Empty Input",
+                    APP_NAME,
                     "Paste some Chinese text or upload a PDF first.",
                 )
                 return
@@ -356,7 +379,7 @@ class MainWindow(QWidget):
             self._enter_editor_view(document, source_text)
 
         except Exception as error:
-            QMessageBox.critical(self, "Error", str(error))
+            QMessageBox.critical(self, APP_NAME, str(error))
             print("ERROR:", repr(error))
 
     def handle_generate_html(self) -> None:
@@ -364,7 +387,7 @@ class MainWindow(QWidget):
             if not self._has_text():
                 QMessageBox.warning(
                     self,
-                    "Empty Input",
+                    APP_NAME,
                     "Paste some Chinese text or upload a PDF first.",
                 )
                 return
@@ -399,7 +422,7 @@ class MainWindow(QWidget):
             self.open_html(html_path)
 
         except Exception as error:
-            QMessageBox.critical(self, "Error", str(error))
+            QMessageBox.critical(self, APP_NAME, str(error))
             print("ERROR:", repr(error))
 
     def handle_pdf_upload(self) -> None:
@@ -408,7 +431,7 @@ class MainWindow(QWidget):
                 self,
                 "Select PDF",
                 "",
-                "PDF Files (*.pdf)",
+                PDF_FILE_FILTER,
             )
 
             if not file_path:
@@ -417,14 +440,14 @@ class MainWindow(QWidget):
             self._handle_pdf_file(file_path)
 
         except Exception as error:
-            QMessageBox.critical(self, "Error", str(error))
+            QMessageBox.critical(self, APP_NAME, str(error))
             print("ERROR:", repr(error))
 
     def handle_open_last_output(self) -> None:
         if not self.last_output_path or not self.last_output_path.exists():
             QMessageBox.information(
                 self,
-                "No Output",
+                APP_NAME,
                 "Generate HTML once before opening the last output.",
             )
             return
@@ -439,7 +462,7 @@ class MainWindow(QWidget):
         ):
             QMessageBox.information(
                 self,
-                "No Job Folder",
+                APP_NAME,
                 "Generate HTML once before opening the job folder.",
             )
             return
@@ -458,8 +481,9 @@ class MainWindow(QWidget):
     def handle_delete_all_jobs(self) -> None:
         result = QMessageBox.question(
             self,
-            "Delete All Jobs",
-            "Delete all job folders in the workspace?\n\nThis will remove all generated HTML, structured text, and metadata in workspace/job_*.",
+            APP_NAME,
+            f"Delete all job folders in:\n{get_primary_workspace_path()}\n\n"
+            "This will remove all generated HTML, structured text, and metadata for previous runs.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -473,16 +497,19 @@ class MainWindow(QWidget):
 
             QMessageBox.information(
                 self,
-                "Jobs Deleted",
-                f"Deleted {deleted_count} job folder(s) from the workspace.",
+                APP_NAME,
+                f"Deleted {deleted_count} job folder(s).",
             )
         except Exception as error:
-            QMessageBox.critical(self, "Error", str(error))
+            QMessageBox.critical(self, APP_NAME, str(error))
             print("ERROR:", repr(error))
 
 
-def run_app():
+def run_app(initial_file_path: str | None = None):
     app = QApplication(sys.argv)
-    window = MainWindow()
+    app.setApplicationName(APP_NAME)
+    app.setApplicationDisplayName(APP_NAME)
+
+    window = MainWindow(initial_file_path=initial_file_path)
     window.show()
     sys.exit(app.exec())

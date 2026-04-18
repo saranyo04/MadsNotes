@@ -6,6 +6,7 @@ from core.text_structurer import (
     build_document,
     normalize_structuring_mode,
 )
+from utils.app_metadata import OUTPUT_HTML_FILENAME
 from utils.file_manager import create_job, write_job_json, write_job_text
 from utils.html_generator import generate_html
 
@@ -82,7 +83,7 @@ def generate_html_output(
     document = _validated_document(document)
 
     job_path = create_job()
-    output_path = job_path / "output" / "study.html"
+    output_path = job_path / "output" / OUTPUT_HTML_FILENAME
 
     structured_text = (
         editor_text

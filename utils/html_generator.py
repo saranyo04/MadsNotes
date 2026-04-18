@@ -1,6 +1,8 @@
 from html import escape
 from pathlib import Path
 
+from utils.app_metadata import APP_NAME
+
 
 def _is_cjk(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
@@ -57,7 +59,7 @@ def generate_html(document: dict, output_path):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{escape(meta.get("title", "Chinese Study"))}</title>
+    <title>{escape(meta.get("title", APP_NAME))}</title>
     <style>
         body {{
             font-family: {font_family};

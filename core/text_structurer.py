@@ -1,8 +1,10 @@
 import re
 from typing import Any
 
+from utils.app_metadata import APP_NAME
+
 CONFIG = {
-    "title": "Chinese Study",
+    "title": APP_NAME,
     "lang": "zh-CN",
     "font_family": "Microsoft YaHei, PingFang SC, sans-serif",
     "padding": "40px",

@@ -20,6 +20,7 @@ Thumbs.db
 
 # Workspace (runtime data - IMPORTANT)
 workspace/
+madschinese_workspace/
 
 # Temp files
 *.tmp
@@ -33,3 +34,28 @@ dist/
 
 # Environment variables / secrets
 .env
+
+
+# PyInstaller extras
+*.spec.backup
+*.manifest
+*.exe.manifest
+
+# Packaging
+*.whl
+pip-wheel-metadata/
+
+# Recursive cache
+**/__pycache__/
+
+# Testing / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE
+.idea/
+
+# Misc
+*.bak
+*.swp
