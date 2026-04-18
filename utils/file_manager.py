@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 
@@ -31,3 +32,19 @@ def write_job_json(job_path: Path, relative_path: str, payload: dict) -> Path:
         encoding="utf-8",
     )
     return target_path
+
+
+def delete_all_jobs(workspace_path: str | Path = "workspace") -> int:
+    workspace = Path(workspace_path)
+
+    if not workspace.exists():
+        return 0
+
+    deleted_count = 0
+
+    for job_path in workspace.iterdir():
+        if job_path.is_dir() and job_path.name.startswith("job_"):
+            shutil.rmtree(job_path)
+            deleted_count += 1
+
+    return deleted_count

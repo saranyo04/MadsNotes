@@ -22,6 +22,7 @@ from app.shortcuts import install_shortcuts
 from core.document_editor import document_to_editor_text, editor_text_to_document
 from core.pipeline import process_text, read_pdf_text, render_document
 from core.text_structurer import DEFAULT_STRUCTURING_MODE, STRUCTURING_MODE_OPTIONS
+from utils.file_manager import delete_all_jobs
 
 
 class MainWindow(QWidget):
@@ -95,11 +96,15 @@ class MainWindow(QWidget):
         self.open_last_output_action.triggered.connect(self.handle_open_last_output)
         self.open_job_folder_action = QAction("Open Job Folder", self)
         self.open_job_folder_action.triggered.connect(self.handle_open_job_folder)
+        self.delete_all_jobs_action = QAction("Delete All Jobs", self)
+        self.delete_all_jobs_action.triggered.connect(self.handle_delete_all_jobs)
 
         self.settings_menu.addAction(self.open_editor_before_render_action)
         self.settings_menu.addSeparator()
         self.settings_menu.addAction(self.open_last_output_action)
         self.settings_menu.addAction(self.open_job_folder_action)
+        self.settings_menu.addSeparator()
+        self.settings_menu.addAction(self.delete_all_jobs_action)
         self.settings_menu.aboutToShow.connect(self.sync_quick_settings_menu)
         self.settings_button.setMenu(self.settings_menu)
 
@@ -449,6 +454,31 @@ class MainWindow(QWidget):
         self.raw_input_cache = ""
         self.text_input.clear()
         self.update_view_state()
+
+    def handle_delete_all_jobs(self) -> None:
+        result = QMessageBox.question(
+            self,
+            "Delete All Jobs",
+            "Delete all job folders in the workspace?\n\nThis will remove all generated HTML, structured text, and metadata in workspace/job_*.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if result != QMessageBox.Yes:
+            return
+
+        try:
+            deleted_count = delete_all_jobs()
+            self.last_output_path = None
+
+            QMessageBox.information(
+                self,
+                "Jobs Deleted",
+                f"Deleted {deleted_count} job folder(s) from the workspace.",
+            )
+        except Exception as error:
+            QMessageBox.critical(self, "Error", str(error))
+            print("ERROR:", repr(error))
 
 
 def run_app():
