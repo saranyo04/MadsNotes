@@ -1,7 +1,6 @@
-
 # Mad's Chinese
 
-A simple desktop tool to convert Chinese text and PDFs into clean, readable study notes — optimized for use with browser extensions like Zhongwen.
+A simple desktop tool to convert Chinese text and PDFs into clean, readable study notes. Optimized for use with browser extensions like Zhongwen.
 
 ---
 
@@ -41,21 +40,11 @@ Mad's Chinese helps turn messy Chinese input into structured, editable notes and
 
 ---
 
-## How It Works
-
-```
-
-Input → Structure → (Optional Edit) → HTML → Browser
-
-```
-
----
-
 ## Notes
 
 - Works fully offline  
 - No accounts or setup required  
-- Uses browser extensions (like Zhongwen) for word lookup  
+- Use browser extensions (like Zhongwen) for word lookup  
 
 ---
 
