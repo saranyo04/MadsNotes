@@ -15,8 +15,16 @@ def install_shortcuts(window):
         shortcut.activated.connect(callback)
         window._shortcuts.append(shortcut)
 
-    add_shortcut("Ctrl+Return", window.handle_process)
-    add_shortcut("Ctrl+L", window.text_input.clear)
+    primary_action = getattr(window, "handle_primary_action", None)
+    if primary_action is not None:
+        add_shortcut("Ctrl+Return", primary_action)
+    else:
+        add_shortcut("Ctrl+Return", window.handle_process)
+
+    if hasattr(window, "handle_generate_html"):
+        add_shortcut("Ctrl+Shift+Return", window.handle_generate_html)
+    clear_action = getattr(window, "handle_clear_text", window.text_input.clear)
+    add_shortcut("Ctrl+L", clear_action)
     add_shortcut("Ctrl+W", window.close)
 
     window._easter_eggs = EasterEggHandler(window, window.text_input)

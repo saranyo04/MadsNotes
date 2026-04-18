@@ -18,268 +18,310 @@ CONFIG = {
     "collapse_multiple_spaces": True,
 }
 
-_CJK = r"\u4e00-\u9fff"
-_CJK_RE = re.compile(rf"[{_CJK}]")
-_LATIN_RE = re.compile(r"[A-Za-z]")
-_CJK_SPACE_RE = re.compile(rf"(?<=[{_CJK}])\s+(?=[{_CJK}])")
+DEFAULT_STRUCTURING_MODE = "strict"
+STRUCTURING_MODE_OPTIONS = (
+    ("simple", "Simple"),
+    ("strict", "Strict"),
+    ("none", "None"),
+)
+STRUCTURING_MODES = {mode for mode, _label in STRUCTURING_MODE_OPTIONS}
+STRUCTURING_MODE_ALIASES = {
+    "conservative": "strict",
+}
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+_CJK_SPACE_RE = re.compile(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])")
 _MULTI_SPACE_RE = re.compile(r"[ \t]{2,}")
-_SCRIPT_SWITCH_RE = re.compile(
-    rf"(?<=[{_CJK}])(?=[A-Za-z0-9])|(?<=[A-Za-z0-9])(?=[{_CJK}])"
+_BULLET_RE = re.compile(r"^\s*(?:[•·\-–—*]|\d+[\.\)])\s+(.*\S.*)$")
+_PUNCTUATION_RE = re.compile(r"[。！？；：，、.!?;:,]")
+_SENTENCE_END_RE = re.compile(r"[。！？.!?]$")
+_CHAPTER_HEADING_RE = re.compile(
+    r"^\s*第[一二三四五六七八九十百千万0-9]+[章节篇回部卷]\s*[:：]?\s*\S.*$"
 )
-
-_BULLET_RE = re.compile(r"^\s*(?:[•·\-–—*]|(?:\d+[\.\)]))\s+(.*\S.*)$")
-_HEADING_RE = re.compile(
-    r"^\s*(?:第[一二三四五六七八九十百千0-9]+章|[一二三四五六七八九十]+、)\s*$"
-)
-
-_KNOWN_LABELS = (
-    "中文要点：",
-    "中文要点:",
-    "English (translation):",
-    "English translation:",
-    "English Translation:",
-    "翻译：",
-    "翻译:",
-    "要点：",
-    "要点:",
-    "重点：",
-    "重点:",
-)
+_NUMBERED_HEADING_RE = re.compile(r"^\s*[一二三四五六七八九十0-9]+[、.．]\s*\S.*$")
+_MAX_HEADING_LENGTH = 18
+_MAX_LIST_LINE_LENGTH = 120
 
 
-def _kind(text: str) -> str:
-    has_cjk = bool(_CJK_RE.search(text))
-    has_lat = bool(_LATIN_RE.search(text))
+def normalize_structuring_mode(mode: str | None) -> str:
+    if not mode:
+        return DEFAULT_STRUCTURING_MODE
 
-    if has_cjk and not has_lat:
-        return "cjk"
-    if has_lat and not has_cjk:
-        return "latin"
-    if has_cjk and has_lat:
-        return "mixed"
-    return "other"
+    normalized = mode.strip().lower()
+    normalized = STRUCTURING_MODE_ALIASES.get(normalized, normalized)
+
+    if normalized not in STRUCTURING_MODES:
+        raise ValueError(f"Unsupported structuring mode: {mode}")
+
+    return normalized
 
 
-def _normalize_cjk(text: str) -> str:
+def _base_meta(mode: str) -> dict[str, Any]:
+    meta = CONFIG.copy()
+    meta["structuring_mode"] = mode
+    return meta
+
+
+def _normalize_line(text: str) -> str:
     text = text.strip()
+
+    if not text:
+        return ""
+
     if CONFIG["remove_whitespace_between_chinese"]:
         text = _CJK_SPACE_RE.sub("", text)
+
     if CONFIG["collapse_multiple_spaces"]:
         text = _MULTI_SPACE_RE.sub(" ", text)
+
     return text.strip()
 
 
-def _normalize_latin(text: str) -> str:
-    text = text.strip()
-    if CONFIG["collapse_multiple_spaces"]:
-        text = re.sub(r"\s+", " ", text)
+def _normalize_raw_line(text: str) -> str:
     return text.strip()
 
 
-def _normalize_by_kind(text: str, kind: str) -> str:
-    if kind == "cjk":
-        return _normalize_cjk(text)
-    return _normalize_latin(text)
+def _split_list_item(line: str) -> str | None:
+    match = _BULLET_RE.match(line)
+    if not match:
+        return None
+    return _normalize_line(match.group(1))
+
+
+def _is_label(line: str) -> bool:
+    return line.endswith(":") or line.endswith("：")
 
 
 def _is_heading(line: str) -> bool:
-    s = line.strip()
-    return bool(s) and bool(_HEADING_RE.match(s))
+    if _CHAPTER_HEADING_RE.match(line):
+        return True
+
+    if _NUMBERED_HEADING_RE.match(line):
+        return True
+
+    if line.startswith(("(", "（", "[", "【")) and line.endswith((")", "）", "]", "】")):
+        return len(line.replace(" ", "")) <= 30
+
+    compact = line.replace(" ", "")
+
+    if not compact:
+        return False
+
+    if _PUNCTUATION_RE.search(line):
+        return False
+
+    return len(compact) <= _MAX_HEADING_LENGTH
 
 
-def _split_bullet(line: str) -> str | None:
-    m = _BULLET_RE.match(line)
-    if not m:
-        return None
-    return m.group(1).strip()
+def _last_visible_char(text: str) -> str:
+    for char in reversed(text):
+        if not char.isspace():
+            return char
+    return ""
 
 
-def _split_script_switch(text: str) -> list[str]:
-    parts = [p for p in _SCRIPT_SWITCH_RE.split(text) if p and p.strip()]
-    return parts if parts else [text]
+def _first_visible_char(text: str) -> str:
+    for char in text:
+        if not char.isspace():
+            return char
+    return ""
 
 
-def _split_label_prefix(line: str) -> tuple[str, str] | None:
-    s = line.strip()
-
-    for known in _KNOWN_LABELS:
-        if s.startswith(known):
-            return known, s[len(known):].strip()
-
-    if ":" not in s and "：" not in s:
-        return None
-
-    idx = s.find(":") if ":" in s else s.find("：")
-    prefix = s[: idx + 1].strip()
-    suffix = s[idx + 1 :].strip()
-
-    if not suffix:
-        return None
-    if len(prefix) > 40:
-        return None
-    if any(ch in prefix for ch in "。！？!?"):
-        return None
-
-    if re.fullmatch(r"[A-Za-z\u4e00-\u9fff0-9（）()·\s,\-\/&]+[:：]", prefix):
-        return prefix, suffix
-
-    return None
+def _should_join_without_space(left: str, right: str) -> bool:
+    left_char = _last_visible_char(left)
+    right_char = _first_visible_char(right)
+    return bool(_CJK_RE.fullmatch(left_char)) and bool(_CJK_RE.fullmatch(right_char))
 
 
-def _flush_paragraph(
-    blocks: list[dict],
-    paragraphs: list[str],
-    current_kind: str | None,
-    current_parts: list[str],
-) -> tuple[str | None, list[str]]:
-    if not current_parts:
-        return None, []
+def _join_lines(lines: list[str]) -> str:
+    if not lines:
+        return ""
 
-    if current_kind == "cjk":
-        text = "".join(current_parts)
-    else:
-        text = " ".join(current_parts)
+    text = lines[0]
 
-    text = _normalize_by_kind(text, current_kind or "other")
-    text = text.strip()
+    for line in lines[1:]:
+        if _should_join_without_space(text, line):
+            text = f"{text}{line}"
+        else:
+            text = f"{text} {line}"
 
-    if text:
-        blocks.append(
-            {
-                "type": "paragraph",
-                "kind": current_kind or "other",
-                "text": text,
-            }
-        )
-        paragraphs.append(text)
-
-    return None, []
+    return _normalize_line(text)
 
 
-def _flush_list(
-    blocks: list[dict],
-    paragraphs: list[str],
-    current_items: list[str],
-) -> list[str]:
-    if not current_items:
-        return []
+def _split_line_groups(
+    text: str,
+    *,
+    normalizer,
+) -> list[list[str]]:
+    groups: list[list[str]] = []
+    current_group: list[str] = []
 
-    blocks.append({"type": "list", "items": current_items[:]})
-    for item in current_items:
-        if item.strip():
-            paragraphs.append(f"• {item.strip()}")
+    for raw_line in text.splitlines():
+        line = normalizer(raw_line)
 
-    return []
+        if not line:
+            if current_group:
+                groups.append(current_group[:])
+                current_group.clear()
+            continue
+
+        current_group.append(line)
+
+    if current_group:
+        groups.append(current_group)
+
+    return groups
 
 
-def build_document(text: str) -> dict[str, Any]:
-    lines = [line.rstrip() for line in text.splitlines()]
-
-    blocks: list[dict] = []
+def _build_simple_document(text: str) -> dict[str, Any]:
+    blocks: list[dict[str, Any]] = []
     paragraphs: list[str] = []
 
-    current_kind: str | None = None
-    current_parts: list[str] = []
+    for group in _split_line_groups(text, normalizer=_normalize_line):
+        paragraph_text = _join_lines(group)
 
-    current_list_items: list[str] = []
-    in_list_block = False
+        if paragraph_text:
+            blocks.append({"type": "paragraph", "text": paragraph_text})
+            paragraphs.append(paragraph_text)
 
-    def flush_paragraph():
-        nonlocal current_kind, current_parts
-        current_kind, current_parts = _flush_paragraph(
-            blocks, paragraphs, current_kind, current_parts
+    return {
+        "meta": _base_meta("simple"),
+        "blocks": blocks,
+        "paragraphs": paragraphs,
+    }
+
+
+def _build_none_document(text: str) -> dict[str, Any]:
+    blocks: list[dict[str, Any]] = []
+    paragraphs: list[str] = []
+
+    for group in _split_line_groups(text, normalizer=_normalize_raw_line):
+        paragraph_text = "\n".join(group).strip()
+
+        if paragraph_text:
+            blocks.append({"type": "paragraph", "text": paragraph_text})
+            paragraphs.append(paragraph_text)
+
+    return {
+        "meta": _base_meta("none"),
+        "blocks": blocks,
+        "paragraphs": paragraphs,
+    }
+
+
+def _build_strict_document(text: str) -> dict[str, Any]:
+    blocks: list[dict[str, Any]] = []
+    paragraphs: list[str] = []
+    current_paragraph: list[str] = []
+    current_list: list[str] = []
+    prefer_plain_list = False
+
+    def looks_like_plain_list_block(lines: list[str]) -> bool:
+        normalized_lines = [line for line in lines if line and line.strip()]
+
+        if len(normalized_lines) < 2:
+            return False
+
+        if any(_is_label(line) or _is_heading(line) for line in normalized_lines):
+            return False
+
+        if any(len(line) > _MAX_LIST_LINE_LENGTH for line in normalized_lines):
+            return False
+
+        sentence_like_count = sum(
+            1 for line in normalized_lines if _SENTENCE_END_RE.search(line)
         )
 
-    def flush_list():
-        nonlocal current_list_items
-        current_list_items = _flush_list(blocks, paragraphs, current_list_items)
+        return sentence_like_count >= max(2, len(normalized_lines) - 1)
 
-    def process_text_segment(segment: str):
-        nonlocal current_kind, current_parts
+    def flush_paragraph() -> None:
+        nonlocal prefer_plain_list
 
-        for piece in _split_script_switch(segment):
-            piece = piece.strip()
-            if not piece:
-                continue
+        if not current_paragraph:
+            prefer_plain_list = False
+            return
 
-            piece_kind = _kind(piece)
-            normalized = _normalize_by_kind(piece, piece_kind)
+        if prefer_plain_list and looks_like_plain_list_block(current_paragraph):
+            items = [_normalize_line(line) for line in current_paragraph if _normalize_line(line)]
+            current_paragraph.clear()
+            prefer_plain_list = False
 
-            if not normalized:
-                continue
+            if items:
+                blocks.append({"type": "list", "items": items})
+                paragraphs.extend(f"• {item}" for item in items)
+            return
 
-            if current_kind is None:
-                current_kind = piece_kind
-                current_parts = [normalized]
-            elif piece_kind != current_kind:
-                flush_paragraph()
-                current_kind = piece_kind
-                current_parts = [normalized]
-            else:
-                current_parts.append(normalized)
+        paragraph_text = _join_lines(current_paragraph)
+        current_paragraph.clear()
+        prefer_plain_list = False
 
-    for raw_line in lines:
-        line = raw_line.strip()
+        if paragraph_text:
+            blocks.append({"type": "paragraph", "text": paragraph_text})
+            paragraphs.append(paragraph_text)
+
+    def flush_list() -> None:
+        if not current_list:
+            return
+
+        items = [item for item in current_list if item]
+        current_list.clear()
+
+        if items:
+            blocks.append({"type": "list", "items": items})
+            paragraphs.extend(f"• {item}" for item in items)
+
+    for raw_line in text.splitlines():
+        line = _normalize_line(raw_line)
 
         if not line:
             flush_paragraph()
             flush_list()
-            in_list_block = False
+            continue
+
+        list_item = _split_list_item(line)
+        if list_item is not None:
+            flush_paragraph()
+            current_list.append(list_item)
+            continue
+
+        flush_list()
+
+        if _is_label(line):
+            flush_paragraph()
+            blocks.append({"type": "label", "text": line})
+            paragraphs.append(line)
+            prefer_plain_list = True
             continue
 
         if _is_heading(line):
             flush_paragraph()
-            flush_list()
-            in_list_block = False
-
-            heading = _normalize_latin(line)
-            if heading:
-                blocks.append({"type": "heading", "text": heading})
-                paragraphs.append(heading)
+            blocks.append({"type": "heading", "text": line})
+            paragraphs.append(line)
+            prefer_plain_list = False
             continue
 
-        label_split = _split_label_prefix(line)
-        if label_split:
-            flush_paragraph()
-            flush_list()
-            in_list_block = False
-
-            label_text, remainder = label_split
-            label_text = _normalize_latin(label_text)
-
-            if label_text:
-                blocks.append({"type": "label", "text": label_text})
-                paragraphs.append(label_text)
-
-            if remainder:
-                process_text_segment(remainder)
-
-            continue
-
-        bullet_text = _split_bullet(line)
-        if bullet_text is not None:
-            flush_paragraph()
-
-            item = _normalize_latin(bullet_text) if _kind(bullet_text) == "latin" else _normalize_cjk(bullet_text)
-            if item:
-                current_list_items.append(item)
-
-            in_list_block = True
-            continue
-
-        if in_list_block and current_list_items:
-            continuation = _normalize_latin(line) if _kind(line) == "latin" else _normalize_cjk(line)
-            if continuation:
-                current_list_items[-1] = f"{current_list_items[-1]} {continuation}".strip()
-            continue
-
-        process_text_segment(line)
+        current_paragraph.append(line)
 
     flush_paragraph()
     flush_list()
 
     return {
-        "meta": CONFIG.copy(),
+        "meta": _base_meta("strict"),
         "blocks": blocks,
         "paragraphs": paragraphs,
     }
+
+
+def build_document(
+    text: str,
+    mode: str = DEFAULT_STRUCTURING_MODE,
+) -> dict[str, Any]:
+    normalized_mode = normalize_structuring_mode(mode)
+
+    if normalized_mode == "simple":
+        return _build_simple_document(text)
+
+    if normalized_mode == "none":
+        return _build_none_document(text)
+
+    return _build_strict_document(text)
