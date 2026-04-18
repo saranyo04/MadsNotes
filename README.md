@@ -18,12 +18,6 @@ No installation required.
 
 ---
 
-## What It Does
-
-Mad's Chinese helps turn messy Chinese input into structured, editable notes and generates a clean HTML page for easy study on a laptop.
-
----
-
 ## Features
 
 - Paste Chinese text
