@@ -108,11 +108,15 @@ class MainWindow(QWidget):
         self.text_input = QPlainTextEdit()
         self.text_input.installEventFilter(self)
         self.text_input.setPlaceholderText(
-            "Paste Chinese text here, or upload a selectable PDF.\n\n"
-            "Default flow:\n"
-            "1. Render HTML\n"
-            "2. If the output is bad, open the editor\n"
-            "3. Correct and render again"
+            "Paste Chinese text here, upload a selectable PDF, or drag and drop a PDF.\n"
+            "Choose a structuring mode, then click Render HTML for a quick result.\n"
+            "If the result looks wrong, click Open Editor, fix the structured text, and render again.\n"
+            "Use Options to open the editor before render or reopen the last output/job folder.\n\n"
+            "Shortcuts:\n"
+            "Ctrl+Enter - Primary action\n"
+            "Ctrl+Shift+Enter - Render HTML\n"
+            "Ctrl+L - Clear text\n"
+            "Ctrl+W - Close app"
         )
 
         self.render_button = QPushButton("Render HTML")
@@ -156,11 +160,15 @@ class MainWindow(QWidget):
             )
         else:
             self.text_input.setPlaceholderText(
-                "Paste Chinese text here, or upload a selectable PDF.\n\n"
-                "Default flow:\n"
-                "1. Render HTML\n"
-                "2. If the output is bad, open the editor\n"
-                "3. Correct and render again"
+                "Paste Chinese text here, upload a selectable PDF, or drag and drop a PDF.\n"
+                "Choose a structuring mode, then click Render HTML for a quick result.\n"
+                "If the result looks wrong, click Open Editor, fix the structured text, and render again.\n"
+                "Use Options to open the editor before render or reopen the last output/job folder.\n\n"
+                "Shortcuts:\n"
+                "Ctrl+Enter - Primary action\n"
+                "Ctrl+Shift+Enter - Render HTML\n"
+                "Ctrl+L - Clear text\n"
+                "Ctrl+W - Close app"
             )
 
     def sync_quick_settings_menu(self) -> None:
