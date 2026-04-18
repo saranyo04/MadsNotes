@@ -29,11 +29,7 @@ Mad's Chinese helps turn messy Chinese input into structured, editable notes and
 - Paste Chinese text
 - Upload or drag-and-drop PDFs
 - Automatic text extraction from PDFs
-- Clean structured output:
-  - headings  
-  - lists  
-  - labels  
-  - paragraphs  
+- Clean structured output 
 - Built-in editor to fix formatting
 - Generates clean HTML notes
 - Opens in browser for Zhongwen hover lookup
