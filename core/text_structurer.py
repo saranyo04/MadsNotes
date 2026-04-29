@@ -1,24 +1,8 @@
+from __future__ import annotations
+
 import re
-from typing import Any
 
-from utils.app_metadata import APP_NAME
-
-CONFIG = {
-    "title": APP_NAME,
-    "lang": "zh-CN",
-    "font_family": "Microsoft YaHei, PingFang SC, sans-serif",
-    "padding": "40px",
-    "line_height": "1.9",
-    "font_size": "18px",
-    "max_width": "100%",
-    "margin": "0",
-    "background": "#fff",
-    "color": "#111",
-    "paragraph_margin_bottom": "1em",
-    "paragraph_text_indent": "2em",
-    "remove_whitespace_between_chinese": True,
-    "collapse_multiple_spaces": True,
-}
+from core.models import Block, Document
 
 DEFAULT_STRUCTURING_MODE = "strict"
 STRUCTURING_MODE_OPTIONS = (
@@ -34,7 +18,7 @@ STRUCTURING_MODE_ALIASES = {
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _CJK_SPACE_RE = re.compile(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])")
 _MULTI_SPACE_RE = re.compile(r"[ \t]{2,}")
-_BULLET_RE = re.compile(r"^\s*(?:[•·\-–—*]|\d+[\.\)])\s+(.*\S.*)$")
+_BULLET_RE = re.compile(r"^\s*(?:[\u2022\u00b7\-\u2013\u2014*]|\d+[\.\)])\s+(.*\S.*)$")
 _PUNCTUATION_RE = re.compile(r"[。！？；：，、.!?;:,]")
 _SENTENCE_END_RE = re.compile(r"[。！？.!?]$")
 _CHAPTER_HEADING_RE = re.compile(
@@ -58,24 +42,16 @@ def normalize_structuring_mode(mode: str | None) -> str:
     return normalized
 
 
-def _base_meta(mode: str) -> dict[str, Any]:
-    meta = CONFIG.copy()
-    meta["structuring_mode"] = mode
-    return meta
+def _base_meta(mode: str) -> dict[str, str]:
+    return {"structuring_mode": mode}
 
 
 def _normalize_line(text: str) -> str:
     text = text.strip()
-
     if not text:
         return ""
-
-    if CONFIG["remove_whitespace_between_chinese"]:
-        text = _CJK_SPACE_RE.sub("", text)
-
-    if CONFIG["collapse_multiple_spaces"]:
-        text = _MULTI_SPACE_RE.sub(" ", text)
-
+    text = _CJK_SPACE_RE.sub("", text)
+    text = _MULTI_SPACE_RE.sub(" ", text)
     return text.strip()
 
 
@@ -97,21 +73,16 @@ def _is_label(line: str) -> bool:
 def _is_heading(line: str) -> bool:
     if _CHAPTER_HEADING_RE.match(line):
         return True
-
     if _NUMBERED_HEADING_RE.match(line):
         return True
-
     if line.startswith(("(", "（", "[", "【")) and line.endswith((")", "）", "]", "】")):
         return len(line.replace(" ", "")) <= 30
 
     compact = line.replace(" ", "")
-
     if not compact:
         return False
-
     if _PUNCTUATION_RE.search(line):
         return False
-
     return len(compact) <= _MAX_HEADING_LENGTH
 
 
@@ -140,7 +111,6 @@ def _join_lines(lines: list[str]) -> str:
         return ""
 
     text = lines[0]
-
     for line in lines[1:]:
         if _should_join_without_space(text, line):
             text = f"{text}{line}"
@@ -160,13 +130,11 @@ def _split_line_groups(
 
     for raw_line in text.splitlines():
         line = normalizer(raw_line)
-
         if not line:
             if current_group:
                 groups.append(current_group[:])
                 current_group.clear()
             continue
-
         current_group.append(line)
 
     if current_group:
@@ -175,65 +143,42 @@ def _split_line_groups(
     return groups
 
 
-def _build_simple_document(text: str) -> dict[str, Any]:
-    blocks: list[dict[str, Any]] = []
-    paragraphs: list[str] = []
-
+def _build_simple_document(text: str) -> Document:
+    blocks: list[Block] = []
     for group in _split_line_groups(text, normalizer=_normalize_line):
         paragraph_text = _join_lines(group)
-
         if paragraph_text:
-            blocks.append({"type": "paragraph", "text": paragraph_text})
-            paragraphs.append(paragraph_text)
-
-    return {
-        "meta": _base_meta("simple"),
-        "blocks": blocks,
-        "paragraphs": paragraphs,
-    }
+            blocks.append(Block.paragraph(paragraph_text))
+    return Document(meta=_base_meta("simple"), blocks=blocks)
 
 
-def _build_none_document(text: str) -> dict[str, Any]:
-    blocks: list[dict[str, Any]] = []
-    paragraphs: list[str] = []
-
+def _build_none_document(text: str) -> Document:
+    blocks: list[Block] = []
     for group in _split_line_groups(text, normalizer=_normalize_raw_line):
         paragraph_text = "\n".join(group).strip()
-
         if paragraph_text:
-            blocks.append({"type": "paragraph", "text": paragraph_text})
-            paragraphs.append(paragraph_text)
-
-    return {
-        "meta": _base_meta("none"),
-        "blocks": blocks,
-        "paragraphs": paragraphs,
-    }
+            blocks.append(Block.paragraph(paragraph_text))
+    return Document(meta=_base_meta("none"), blocks=blocks)
 
 
-def _build_strict_document(text: str) -> dict[str, Any]:
-    blocks: list[dict[str, Any]] = []
-    paragraphs: list[str] = []
+def _build_strict_document(text: str) -> Document:
+    blocks: list[Block] = []
     current_paragraph: list[str] = []
     current_list: list[str] = []
     prefer_plain_list = False
 
     def looks_like_plain_list_block(lines: list[str]) -> bool:
         normalized_lines = [line for line in lines if line and line.strip()]
-
         if len(normalized_lines) < 2:
             return False
-
         if any(_is_label(line) or _is_heading(line) for line in normalized_lines):
             return False
-
         if any(len(line) > _MAX_LIST_LINE_LENGTH for line in normalized_lines):
             return False
 
         sentence_like_count = sum(
             1 for line in normalized_lines if _SENTENCE_END_RE.search(line)
         )
-
         return sentence_like_count >= max(2, len(normalized_lines) - 1)
 
     def flush_paragraph() -> None:
@@ -244,22 +189,18 @@ def _build_strict_document(text: str) -> dict[str, Any]:
             return
 
         if prefer_plain_list and looks_like_plain_list_block(current_paragraph):
-            items = [_normalize_line(line) for line in current_paragraph if _normalize_line(line)]
+            items = [normalized for line in current_paragraph if (normalized := _normalize_line(line))]
             current_paragraph.clear()
             prefer_plain_list = False
-
             if items:
-                blocks.append({"type": "list", "items": items})
-                paragraphs.extend(f"• {item}" for item in items)
+                blocks.append(Block.list_block(items))
             return
 
         paragraph_text = _join_lines(current_paragraph)
         current_paragraph.clear()
         prefer_plain_list = False
-
         if paragraph_text:
-            blocks.append({"type": "paragraph", "text": paragraph_text})
-            paragraphs.append(paragraph_text)
+            blocks.append(Block.paragraph(paragraph_text))
 
     def flush_list() -> None:
         if not current_list:
@@ -267,14 +208,11 @@ def _build_strict_document(text: str) -> dict[str, Any]:
 
         items = [item for item in current_list if item]
         current_list.clear()
-
         if items:
-            blocks.append({"type": "list", "items": items})
-            paragraphs.extend(f"• {item}" for item in items)
+            blocks.append(Block.list_block(items))
 
     for raw_line in text.splitlines():
         line = _normalize_line(raw_line)
-
         if not line:
             flush_paragraph()
             flush_list()
@@ -290,15 +228,13 @@ def _build_strict_document(text: str) -> dict[str, Any]:
 
         if _is_label(line):
             flush_paragraph()
-            blocks.append({"type": "label", "text": line})
-            paragraphs.append(line)
+            blocks.append(Block.label(line))
             prefer_plain_list = True
             continue
 
         if _is_heading(line):
             flush_paragraph()
-            blocks.append({"type": "heading", "text": line})
-            paragraphs.append(line)
+            blocks.append(Block.heading(line))
             prefer_plain_list = False
             continue
 
@@ -306,24 +242,21 @@ def _build_strict_document(text: str) -> dict[str, Any]:
 
     flush_paragraph()
     flush_list()
-
-    return {
-        "meta": _base_meta("strict"),
-        "blocks": blocks,
-        "paragraphs": paragraphs,
-    }
+    return Document(meta=_base_meta("strict"), blocks=blocks)
 
 
 def build_document(
     text: str,
     mode: str = DEFAULT_STRUCTURING_MODE,
-) -> dict[str, Any]:
+) -> Document:
     normalized_mode = normalize_structuring_mode(mode)
-
     if normalized_mode == "simple":
         return _build_simple_document(text)
-
     if normalized_mode == "none":
         return _build_none_document(text)
-
     return _build_strict_document(text)
+
+
+class StructuredDocumentBuilder:
+    def build(self, text: str, mode: str = DEFAULT_STRUCTURING_MODE) -> Document:
+        return build_document(text, mode=mode)

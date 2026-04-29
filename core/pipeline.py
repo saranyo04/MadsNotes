@@ -1,77 +1,53 @@
-from datetime import datetime, timezone
+from __future__ import annotations
 
-from core.document_editor import document_to_editor_text
-from core.text_structurer import (
-    DEFAULT_STRUCTURING_MODE,
-    build_document,
-    normalize_structuring_mode,
-)
-from utils.app_metadata import OUTPUT_HTML_FILENAME
-from utils.file_manager import create_job, write_job_json, write_job_text
-from utils.html_generator import generate_html
+"""Legacy compatibility wrapper.
+
+The real runtime workflow lives in ``application.workflow.WorkflowService``.
+This module stays only to preserve older imports while delegating into the
+application layer.
+"""
+
+from importlib import import_module
+
+from core.models import Document
+from core.text_structurer import DEFAULT_STRUCTURING_MODE
 
 
-def _validated_document(document: dict) -> dict:
-    if not document.get("blocks"):
-        raise ValueError("No text to process")
-    return document
+def _workflow_service():
+    workflow_module = import_module("application.workflow")
+    return workflow_module.build_default_workflow()
 
 
 def process_text(
     text: str,
     mode: str = DEFAULT_STRUCTURING_MODE,
-) -> dict:
-    if not text or not text.strip():
-        raise ValueError("No text to process")
-
-    normalized_mode = normalize_structuring_mode(mode)
-    document = build_document(text, mode=normalized_mode)
-    return _validated_document(document)
+) -> Document:
+    workflow = _workflow_service()
+    return workflow.build_document(text=text, mode=mode)
 
 
 def read_pdf_text(pdf_path: str) -> str:
-    from core.pdf_handler import extract_text_from_pdf
-
-    text = extract_text_from_pdf(pdf_path)
-
-    if not text.strip():
-        raise ValueError("No selectable text found in PDF")
-
-    return text
+    workflow = _workflow_service()
+    return workflow.load_pdf_source(pdf_path).text
 
 
 def process_pdf(
     pdf_path: str,
     mode: str = DEFAULT_STRUCTURING_MODE,
-) -> dict:
-    return process_text(read_pdf_text(pdf_path), mode=mode)
-
-
-def _build_job_meta(
-    document: dict,
-    *,
-    job_name: str,
-    source_kind: str,
-    source_path: str | None,
-    structuring_mode: str | None,
-    used_editor: bool,
-) -> dict:
-    blocks = document.get("blocks", [])
-
-    return {
-        "job": job_name,
-        "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "source_kind": source_kind,
-        "source_path": source_path,
-        "structuring_mode": structuring_mode,
-        "used_editor": used_editor,
-        "block_count": len(blocks),
-        "block_types": [block.get("type", "paragraph") for block in blocks],
-    }
+) -> Document:
+    workflow = _workflow_service()
+    source = workflow.load_pdf_source(pdf_path)
+    return workflow.build_document(
+        text=source.text,
+        mode=mode,
+        source_kind=source.kind,
+        source_path=source.path,
+        metadata=source.metadata,
+    )
 
 
 def generate_html_output(
-    document: dict,
+    document: Document,
     *,
     editor_text: str | None = None,
     source_text: str | None = None,
@@ -80,40 +56,24 @@ def generate_html_output(
     structuring_mode: str | None = None,
     used_editor: bool = False,
 ) -> str:
-    document = _validated_document(document)
-
-    job_path = create_job()
-    output_path = job_path / "output" / OUTPUT_HTML_FILENAME
-
-    structured_text = (
-        editor_text
-        if editor_text and editor_text.strip()
-        else document_to_editor_text(document)
-    )
-
-    if source_text and source_text.strip():
-        write_job_text(job_path, "input/source.txt", source_text)
-
-    if structured_text:
-        write_job_text(job_path, "input/structured.txt", structured_text)
-
-    generate_html(document, output_path)
-
-    meta = _build_job_meta(
-        document,
-        job_name=job_path.name,
+    workflow = _workflow_service()
+    result = workflow.render_document(
+        document=document,
+        editor_text=editor_text,
+        source_text=source_text,
         source_kind=source_kind,
         source_path=source_path,
         structuring_mode=structuring_mode,
         used_editor=used_editor,
+        persist=True,
     )
-    write_job_json(job_path, "meta.json", meta)
-
-    return str(output_path)
+    if result.stored_output is None:
+        raise RuntimeError("Render did not produce a stored output")
+    return str(result.stored_output.output_path)
 
 
 def render_document(
-    document: dict,
+    document: Document,
     *,
     editor_text: str | None = None,
     source_text: str | None = None,

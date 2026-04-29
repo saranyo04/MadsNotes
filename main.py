@@ -2,7 +2,7 @@ import ctypes
 import sys
 from pathlib import Path
 
-from utils.app_metadata import APP_ID
+from application.app_info import APP_ID
 
 
 def _set_windows_app_id() -> None:

@@ -1,28 +1,15 @@
-import sys
-from pathlib import Path
+"""Legacy compatibility wrapper for application/infrastructure config."""
 
-APP_NAME = "Mad's Chinese"
-APP_SLUG = "madschinese"
-APP_ID = "madschinese.desktop"
-
-PRIMARY_WORKSPACE_DIRNAME = "madschinese_workspace"
-LEGACY_WORKSPACE_DIRNAME = "workspace"
-JOB_FOLDER_PREFIX = "job_"
-OUTPUT_HTML_FILENAME = "madschinese.html"
-
-PDF_FILE_FILTER = "PDF Files (*.pdf)"
-
-
-def get_app_root() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-
-    return Path(__file__).resolve().parent.parent
-
-
-def get_primary_workspace_path() -> Path:
-    return get_app_root() / PRIMARY_WORKSPACE_DIRNAME
-
-
-def get_legacy_workspace_path() -> Path:
-    return get_app_root() / LEGACY_WORKSPACE_DIRNAME
+from infrastructure.config import (
+    APP_ID,
+    APP_NAME,
+    APP_SLUG,
+    JOB_FOLDER_PREFIX,
+    LEGACY_WORKSPACE_DIRNAME,
+    OUTPUT_HTML_FILENAME,
+    PDF_FILE_FILTER,
+    PRIMARY_WORKSPACE_DIRNAME,
+    get_app_root,
+    get_legacy_workspace_path,
+    get_primary_workspace_path,
+)
