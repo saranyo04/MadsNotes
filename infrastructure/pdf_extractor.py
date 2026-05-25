@@ -3,6 +3,9 @@ from __future__ import annotations
 from core.workflow_models import SourceRequest, SourceText
 
 
+MAX_PDF_PAGES = 100
+
+
 class PdfTextExtractor:
     def __init__(self) -> None:
         self._fitz = None
@@ -18,7 +21,9 @@ class PdfTextExtractor:
         fitz = self._fitz_module()
         text_parts: list[str] = []
         with fitz.open(pdf_path) as doc:
-            for page in doc:
+            for i, page in enumerate(doc):
+                if i >= MAX_PDF_PAGES:
+                    break
                 text_parts.append(page.get_text("text"))
         return "\n".join(text_parts)
 

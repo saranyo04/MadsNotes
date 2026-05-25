@@ -43,13 +43,8 @@ class JobStore:
 
     def create_job(self) -> Path:
         workspace = self.get_workspace_path()
-        existing_ids = (
-            int(suffix)
-            for path in self._job_directories(workspace)
-            if (suffix := path.name[len(JOB_FOLDER_PREFIX):]).isdigit()
-        )
-        next_id = max(existing_ids, default=0) + 1
-        job_path = workspace / f"{JOB_FOLDER_PREFIX}{next_id:03d}"
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        job_path = workspace / f"{JOB_FOLDER_PREFIX}{stamp}"
         (job_path / "input").mkdir(parents=True)
         (job_path / "output").mkdir()
         return job_path
