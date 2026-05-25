@@ -28,11 +28,6 @@ from infrastructure.pdf_extractor import PdfTextExtractor
 from .interfaces import ArtifactStore, DocumentBuilder, DocumentEnricher, EditorCodec, Renderer, TextExtractor
 
 
-class IdentityDocumentEnricher:
-    def enrich(self, document: Document) -> Document:
-        return document
-
-
 class DefaultTextExtractor:
     def __init__(
         self,
@@ -82,7 +77,7 @@ class WorkflowService:
         self._editor_codec = editor_codec
         self._renderer = renderer
         self._artifact_store = artifact_store
-        self._enrichers = list(enrichers or [IdentityDocumentEnricher()])
+        self._enrichers = list(enrichers or [])
         self.session = session or WorkflowSession()
 
     @property

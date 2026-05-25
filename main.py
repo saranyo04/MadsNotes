@@ -1,4 +1,3 @@
-import ctypes
 import sys
 from pathlib import Path
 
@@ -10,6 +9,8 @@ def _set_windows_app_id() -> None:
         return
 
     try:
+        import ctypes
+
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     except Exception:
         pass

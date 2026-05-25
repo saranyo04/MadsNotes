@@ -1,7 +1,5 @@
-from PySide6.QtCore import QObject, QEvent, Qt, QPropertyAnimation
-from PySide6.QtGui import QShortcut, QKeySequence, QFont
-from PySide6.QtWidgets import QLabel, QGraphicsOpacityEffect
-import random
+from PySide6.QtCore import QObject, QEvent
+from PySide6.QtGui import QKeySequence, QShortcut
 
 
 def install_shortcuts(window):
@@ -15,11 +13,7 @@ def install_shortcuts(window):
         shortcut.activated.connect(callback)
         window._shortcuts.append(shortcut)
 
-    primary_action = getattr(window, "handle_primary_action", None)
-    if primary_action is not None:
-        add_shortcut("Ctrl+Return", primary_action)
-    else:
-        add_shortcut("Ctrl+Return", window.handle_process)
+    add_shortcut("Ctrl+Return", window.handle_primary_action)
 
     if hasattr(window, "handle_generate_html"):
         add_shortcut("Ctrl+Shift+Return", window.handle_generate_html)
@@ -59,6 +53,12 @@ class EasterEggHandler(QObject):
         }
         
     def show_message(self, text):
+        import random
+
+        from PySide6.QtCore import Qt, QPropertyAnimation
+        from PySide6.QtGui import QFont
+        from PySide6.QtWidgets import QGraphicsOpacityEffect, QLabel
+
         label = QLabel(text, self.window)
         label.setAttribute(Qt.WA_TransparentForMouseEvents)
 
