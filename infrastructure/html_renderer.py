@@ -110,5 +110,5 @@ class HtmlRenderer:
         return RenderArtifact(
             document=document,
             html=html_content,
-            metadata={"body": body, "has_tokens": has_tokens},
+            metadata={"has_tokens": has_tokens},
         )

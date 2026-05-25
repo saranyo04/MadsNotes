@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from core.document_editor import DocumentEditorCodec
-from core.models import Document, ensure_document
+from core.models import Document
 from core.workflow_models import (
     DeleteJobsResult,
     EditorViewResult,
@@ -96,10 +96,6 @@ class WorkflowService:
         if session is not None:
             self.session = session
 
-    def load_source(self, source_request: SourceRequest) -> SourceText:
-        source, _session = self._load_source_for_session(source_request, self.session)
-        return source
-
     def remember_source_text(
         self,
         text: str,
@@ -117,12 +113,6 @@ class WorkflowService:
         if not source.text.strip():
             raise ValueError("No text to process")
         return source
-
-    def remember_text_source(self, text: str, *, source_path: str | None = None) -> SourceText:
-        return self.remember_source_text(text, source_kind="text", source_path=source_path)
-
-    def load_pdf_source(self, pdf_path: str) -> SourceText:
-        return self.load_source(SourceRequest(kind="pdf", path=pdf_path))
 
     def prepare_pdf_for_ui(
         self,
@@ -165,25 +155,6 @@ class WorkflowService:
             render_result=render_result,
             session=render_result.session,
         )
-
-    def build_document(
-        self,
-        *,
-        text: str,
-        mode: str,
-        source_kind: str = "text",
-        source_path: str | None = None,
-        metadata: dict[str, object] | None = None,
-        session: WorkflowSession | None = None,
-    ) -> Document:
-        source = self.remember_source_text(
-            text,
-            source_kind=source_kind,
-            source_path=source_path,
-            metadata=metadata,
-        )
-        _document, _session = self._build_document(source.text, mode, session or self.session)
-        return _document
 
     def build_editor_view(
         self,
@@ -252,7 +223,7 @@ class WorkflowService:
         )
         base_session = (session or self.session).with_source(source)
         document, next_session = self._build_document(source.text, mode, base_session)
-        editor_text = self._editor_codec.to_text(document)
+        editor_text = self._editor_codec.to_text(document) if persist else None
         return self._render_document(
             source=source,
             document=document,
@@ -392,50 +363,6 @@ class WorkflowService:
             session=base_session,
         )
 
-    def render_document(
-        self,
-        *,
-        document: Document,
-        editor_text: str | None = None,
-        source_text: str | None = None,
-        source_kind: str = "text",
-        source_path: str | None = None,
-        metadata: dict[str, object] | None = None,
-        structuring_mode: str | None = None,
-        used_editor: bool = False,
-        persist: bool = True,
-        session: WorkflowSession | None = None,
-    ) -> RenderResult:
-        document = ensure_document(document)
-        if not document.blocks:
-            raise ValueError("No text to process")
-        base_session = session or self.session
-
-        resolved_editor_text = (
-            editor_text
-            if editor_text and editor_text.strip()
-            else self._editor_codec.to_text(document)
-        )
-        source, next_session = self._resolve_source(
-            session=base_session,
-            fallback_text=source_text or resolved_editor_text,
-            source_kind=source_kind,
-            source_path=source_path,
-            metadata=metadata,
-        )
-        return self._render_document(
-            source=source,
-            document=document,
-            editor_text=resolved_editor_text,
-            structuring_mode=structuring_mode or self.default_structuring_mode,
-            used_editor=used_editor,
-            persist=persist,
-            session=next_session.with_document(
-                document,
-                mode=structuring_mode or self.default_structuring_mode,
-            ),
-        )
-
     def delete_all_jobs(self) -> DeleteJobsResult:
         deleted_count = self._artifact_store.delete_all()
         return DeleteJobsResult(
@@ -498,7 +425,7 @@ class WorkflowService:
         *,
         source: SourceText,
         document: Document,
-        editor_text: str,
+        editor_text: str | None,
         structuring_mode: str,
         used_editor: bool,
         persist: bool,

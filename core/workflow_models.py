@@ -63,7 +63,7 @@ class WorkflowSession:
         render_artifact: RenderArtifact,
         stored_output: StoredOutput | None,
     ) -> "WorkflowSession":
-        return replace(self, last_render=render_artifact, last_output=stored_output)
+        return replace(self, last_render=None, last_output=stored_output)
 
     def cleared_output(self) -> "WorkflowSession":
         return replace(self, last_render=None, last_output=None)
@@ -84,7 +84,7 @@ class EditorViewResult:
 class RenderResult:
     source: SourceText
     document: Document
-    editor_text: str
+    editor_text: str | None
     artifact: RenderArtifact
     stored_output: StoredOutput | None = None
     session: WorkflowSession | None = None

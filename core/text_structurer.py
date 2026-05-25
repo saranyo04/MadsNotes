@@ -15,7 +15,6 @@ STRUCTURING_MODE_ALIASES = {
     "conservative": "strict",
 }
 
-_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _CJK_SPACE_RE = re.compile(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])")
 _MULTI_SPACE_RE = re.compile(r"[ \t]{2,}")
 _BULLET_RE = re.compile(r"^\s*(?:[\u2022\u00b7\-\u2013\u2014*]|\d+[\.\)])\s+(.*\S.*)$")
@@ -100,10 +99,14 @@ def _first_visible_char(text: str) -> str:
     return ""
 
 
+def _is_cjk_char(char: str) -> bool:
+    return "\u4e00" <= char <= "\u9fff"
+
+
 def _should_join_without_space(left: str, right: str) -> bool:
     left_char = _last_visible_char(left)
     right_char = _first_visible_char(right)
-    return bool(_CJK_RE.fullmatch(left_char)) and bool(_CJK_RE.fullmatch(right_char))
+    return _is_cjk_char(left_char) and _is_cjk_char(right_char)
 
 
 def _join_lines(lines: list[str]) -> str:

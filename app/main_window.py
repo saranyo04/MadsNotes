@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtCore import QEvent, QTimer
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -239,9 +239,6 @@ class MainWindow(QWidget):
     def _text_content(self) -> str:
         return self.text_input.toPlainText()
 
-    def _has_text(self) -> bool:
-        return bool(self._text_content().strip())
-
     def _selected_structuring_mode(self) -> str:
         return self.mode_combo.currentData() or self._workflow.default_structuring_mode
 
@@ -297,10 +294,10 @@ class MainWindow(QWidget):
             self._after_render_ready(result.render_result)
 
     def open_local_path(self, path: Path) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
 
-    def open_html(self, html_path: str) -> None:
-        self.open_local_path(Path(html_path))
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
 
     def handle_launch_file(self, file_path: str) -> None:
         if self._busy:
@@ -365,7 +362,8 @@ class MainWindow(QWidget):
         if self._busy:
             return
 
-        if not self._has_text():
+        visible_text = self._text_content()
+        if not visible_text.strip():
             QMessageBox.warning(
                 self,
                 APP_NAME,
@@ -375,12 +373,14 @@ class MainWindow(QWidget):
 
         structuring_mode = self._selected_structuring_mode()
         source_kind, source_path, metadata = self._current_source_context()
+        view_mode = self.view_mode
+        open_editor_before_render = self.open_editor_before_render_action.isChecked()
         self._run_task(
             lambda: self._workflow.primary_action_for_ui(
-                view_mode=self.view_mode,
-                visible_text=self._text_content(),
+                view_mode=view_mode,
+                visible_text=visible_text,
                 mode=structuring_mode,
-                open_editor_before_render=self.open_editor_before_render_action.isChecked(),
+                open_editor_before_render=open_editor_before_render,
                 source_kind=source_kind,
                 source_path=source_path,
                 metadata=metadata,
@@ -397,7 +397,8 @@ class MainWindow(QWidget):
             self._return_to_input_view()
             return
 
-        if not self._has_text():
+        visible_text = self._text_content()
+        if not visible_text.strip():
             QMessageBox.warning(
                 self,
                 APP_NAME,
@@ -409,7 +410,7 @@ class MainWindow(QWidget):
         mode = self._selected_structuring_mode()
         self._run_task(
             lambda: self._workflow.open_editor_for_ui(
-                text=self._text_content(),
+                text=visible_text,
                 mode=mode,
                 source_kind=source_kind,
                 source_path=source_path,
@@ -422,13 +423,14 @@ class MainWindow(QWidget):
         self._workflow.apply_session(result.session)
         if result.stored_output is None:
             raise RuntimeError("Render did not produce a stored output")
-        self.open_html(str(result.stored_output.output_path))
+        self.open_local_path(result.stored_output.output_path)
 
     def handle_generate_html(self) -> None:
         if self._busy:
             return
 
-        if not self._has_text():
+        visible_text = self._text_content()
+        if not visible_text.strip():
             QMessageBox.warning(
                 self,
                 APP_NAME,
@@ -438,10 +440,11 @@ class MainWindow(QWidget):
 
         structuring_mode = self._selected_structuring_mode()
         source_kind, source_path, metadata = self._current_source_context()
+        view_mode = self.view_mode
         self._run_task(
             lambda: self._workflow.render_for_ui(
-                view_mode=self.view_mode,
-                visible_text=self._text_content(),
+                view_mode=view_mode,
+                visible_text=visible_text,
                 mode=structuring_mode,
                 source_kind=source_kind,
                 source_path=source_path,

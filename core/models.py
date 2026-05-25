@@ -121,18 +121,16 @@ class Block:
     def from_mapping(cls, value: Mapping[str, Any]) -> "Block":
         kind = str(value.get("type", "paragraph"))
         if kind == "list":
+            item_tokens = value.get("item_tokens", [])
             items = [
-                InlineText.from_value({"text": item_text, "tokens": item_tokens})
-                for item_text, item_tokens in zip(
-                    value.get("items", []),
-                    value.get("item_tokens", [[] for _ in value.get("items", [])]),
+                InlineText.from_value(
+                    {
+                        "text": item_text,
+                        "tokens": item_tokens[index] if index < len(item_tokens) else [],
+                    }
                 )
+                for index, item_text in enumerate(value.get("items", []))
             ]
-            if not items:
-                items = [
-                    InlineText.from_value(item_text)
-                    for item_text in value.get("items", [])
-                ]
             return cls(kind=kind, items=items, metadata=dict(value.get("metadata", {})))
 
         inline_payload: dict[str, Any] = {"text": value.get("text", "")}
