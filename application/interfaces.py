@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 from core.models import Document
 from core.workflow_models import RenderArtifact, SourceRequest, SourceText, StoredOutput
-
-T = TypeVar("T")
-
 
 class TextExtractor(Protocol):
     def extract(self, source_request: SourceRequest) -> SourceText:
@@ -57,14 +53,4 @@ class ArtifactStore(Protocol):
         ...
 
     def get_workspace_path(self) -> Path:
-        ...
-
-
-class TaskRunner(Protocol):
-    def submit(
-        self,
-        fn: Callable[[], T],
-        on_success: Callable[[T], None],
-        on_error: Callable[[Exception], None],
-    ) -> None:
         ...
