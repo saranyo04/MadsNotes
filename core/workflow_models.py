@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -44,32 +44,26 @@ class StoredOutput:
 class WorkflowSession:
     source: SourceText | None = None
     current_document: Document | None = None
-    last_render: RenderArtifact | None = None
     last_output: StoredOutput | None = None
     last_structuring_mode: str | None = None
 
-    def with_source(self, source: SourceText) -> "WorkflowSession":
-        return replace(self, source=source)
+    def set_source(self, source: SourceText) -> None:
+        self.source = source
 
-    def with_document(self, document: Document, mode: str | None = None) -> "WorkflowSession":
-        return replace(
-            self,
-            current_document=document,
-            last_structuring_mode=mode if mode is not None else self.last_structuring_mode,
-        )
+    def set_document(self, document: Document, mode: str | None = None) -> None:
+        self.current_document = document
+        if mode is not None:
+            self.last_structuring_mode = mode
 
-    def with_render(
-        self,
-        render_artifact: RenderArtifact,
-        stored_output: StoredOutput | None,
-    ) -> "WorkflowSession":
-        return replace(self, last_render=None, last_output=stored_output)
+    def set_render_output(self, stored_output: StoredOutput | None) -> None:
+        self.last_output = stored_output
 
-    def cleared_output(self) -> "WorkflowSession":
-        return replace(self, last_render=None, last_output=None)
+    def clear_output(self) -> None:
+        self.last_output = None
 
-    def cleared_active_state(self) -> "WorkflowSession":
-        return replace(self, source=None, current_document=None)
+    def clear_active_state(self) -> None:
+        self.source = None
+        self.current_document = None
 
 
 @dataclass
@@ -77,7 +71,6 @@ class EditorViewResult:
     source: SourceText
     document: Document
     editor_text: str
-    session: WorkflowSession
 
 
 @dataclass
@@ -87,18 +80,8 @@ class RenderResult:
     editor_text: str | None
     artifact: RenderArtifact
     stored_output: StoredOutput | None = None
-    session: WorkflowSession | None = None
-
-
-@dataclass
-class UiActionResult:
-    view_mode: str
-    display_text: str
-    render_result: RenderResult | None = None
-    session: WorkflowSession | None = None
 
 
 @dataclass
 class DeleteJobsResult:
     deleted_count: int
-    session: WorkflowSession

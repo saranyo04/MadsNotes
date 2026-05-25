@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from app.ui_config import APP_ID
+from infrastructure.config import APP_ID
 
 
 def _set_windows_app_id() -> None:
