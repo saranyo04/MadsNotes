@@ -21,13 +21,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from application.app_info import APP_NAME, PDF_FILE_FILTER, get_primary_workspace_path
 from app.shortcuts import install_shortcuts
+from app.ui_config import APP_NAME, PDF_FILE_FILTER
 
 if TYPE_CHECKING:
-    from application.results import EditorViewResult, RenderResult, SourceText
     from application.workflow import WorkflowService
     from app.qt_task_runner import QtTaskRunner
+    from core.workflow_models import DeleteJobsResult, RenderResult, UiActionResult
 
 
 class MainWindow(QWidget):
@@ -275,45 +275,26 @@ class MainWindow(QWidget):
         return None
 
     def _handle_pdf_file(self, file_path: str) -> None:
-        self._run_task(
-            lambda: self._workflow.load_pdf_source(file_path),
-            self._after_pdf_loaded,
-        )
-
-    def _after_pdf_loaded(self, source: "SourceText") -> None:
-        self._set_input_view_text(source.text)
-        if self.open_editor_before_render_action.isChecked():
-            self._submit_open_editor(
-                text=source.text,
-                source_kind=source.kind,
-                source_path=source.path,
-                metadata=source.metadata,
-            )
-            return
-        self.handle_generate_html()
-
-    def _submit_open_editor(
-        self,
-        *,
-        text: str,
-        source_kind: str,
-        source_path: str | None,
-        metadata: dict[str, object] | None = None,
-    ) -> None:
         mode = self._selected_structuring_mode()
+        open_editor_before_render = self.open_editor_before_render_action.isChecked()
         self._run_task(
-            lambda: self._workflow.build_editor_view(
-                text=text,
+            lambda: self._workflow.prepare_pdf_for_ui(
+                pdf_path=file_path,
                 mode=mode,
-                source_kind=source_kind,
-                source_path=source_path,
-                metadata=metadata,
+                open_editor_before_render=open_editor_before_render,
             ),
-            self._after_editor_ready,
+            self._after_ui_action_ready,
         )
 
-    def _after_editor_ready(self, result: "EditorViewResult") -> None:
-        self._enter_editor_view(result.editor_text)
+    def _after_ui_action_ready(self, result: "UiActionResult") -> None:
+        self._workflow.apply_session(result.session)
+        if result.view_mode == "editor":
+            self._enter_editor_view(result.display_text)
+        else:
+            self._set_input_view_text(result.display_text)
+
+        if result.render_result is not None:
+            self._after_render_ready(result.render_result)
 
     def open_local_path(self, path: Path) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
@@ -383,13 +364,30 @@ class MainWindow(QWidget):
     def handle_primary_action(self) -> None:
         if self._busy:
             return
-        if self.view_mode == "editor":
-            self.handle_generate_html()
+
+        if not self._has_text():
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "Paste some Chinese text or upload a PDF first.",
+            )
             return
-        if self.open_editor_before_render_action.isChecked():
-            self.handle_open_editor()
-            return
-        self.handle_generate_html()
+
+        structuring_mode = self._selected_structuring_mode()
+        source_kind, source_path, metadata = self._current_source_context()
+        self._run_task(
+            lambda: self._workflow.primary_action_for_ui(
+                view_mode=self.view_mode,
+                visible_text=self._text_content(),
+                mode=structuring_mode,
+                open_editor_before_render=self.open_editor_before_render_action.isChecked(),
+                source_kind=source_kind,
+                source_path=source_path,
+                metadata=metadata,
+                persist=True,
+            ),
+            self._after_ui_action_ready,
+        )
 
     def handle_open_editor(self) -> None:
         if self._busy:
@@ -408,14 +406,20 @@ class MainWindow(QWidget):
             return
 
         source_kind, source_path, metadata = self._current_source_context()
-        self._submit_open_editor(
-            text=self._text_content(),
-            source_kind=source_kind,
-            source_path=source_path,
-            metadata=metadata,
+        mode = self._selected_structuring_mode()
+        self._run_task(
+            lambda: self._workflow.open_editor_for_ui(
+                text=self._text_content(),
+                mode=mode,
+                source_kind=source_kind,
+                source_path=source_path,
+                metadata=metadata,
+            ),
+            self._after_ui_action_ready,
         )
 
     def _after_render_ready(self, result: "RenderResult") -> None:
+        self._workflow.apply_session(result.session)
         if result.stored_output is None:
             raise RuntimeError("Render did not produce a stored output")
         self.open_html(str(result.stored_output.output_path))
@@ -432,37 +436,19 @@ class MainWindow(QWidget):
             )
             return
 
-        if self.view_mode == "editor":
-            editor_text = self._text_content()
-            source = self._workflow.session.source
-            source_kind = source.kind if source is not None else "text"
-            source_path = source.path if source is not None else None
-            metadata = dict(source.metadata) if source is not None else {}
-            self._run_task(
-                lambda: self._workflow.render_editor(
-                    editor_text=editor_text,
-                    source_text=self._current_source_text(),
-                    source_kind=source_kind,
-                    source_path=source_path,
-                    metadata=metadata,
-                    persist=True,
-                ),
-                self._after_render_ready,
-            )
-            return
-
-        source_kind, source_path, metadata = self._current_source_context()
         structuring_mode = self._selected_structuring_mode()
+        source_kind, source_path, metadata = self._current_source_context()
         self._run_task(
-            lambda: self._workflow.render_source(
-                text=self._text_content(),
+            lambda: self._workflow.render_for_ui(
+                view_mode=self.view_mode,
+                visible_text=self._text_content(),
                 mode=structuring_mode,
                 source_kind=source_kind,
                 source_path=source_path,
                 metadata=metadata,
                 persist=True,
             ),
-            self._after_render_ready,
+            self._after_ui_action_ready,
         )
 
     def handle_pdf_upload(self) -> None:
@@ -519,7 +505,7 @@ class MainWindow(QWidget):
         result = QMessageBox.question(
             self,
             APP_NAME,
-            f"Delete all job folders in:\n{get_primary_workspace_path()}\n\n"
+            f"Delete all job folders in:\n{self._workflow.jobs_workspace_path}\n\n"
             "This will remove all generated HTML, structured text, and metadata for previous runs.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -529,11 +515,12 @@ class MainWindow(QWidget):
 
         self._run_task(self._workflow.delete_all_jobs, self._after_jobs_deleted)
 
-    def _after_jobs_deleted(self, deleted_count: int) -> None:
+    def _after_jobs_deleted(self, result: "DeleteJobsResult") -> None:
+        self._workflow.apply_session(result.session)
         QMessageBox.information(
             self,
             APP_NAME,
-            f"Deleted {deleted_count} job folder(s).",
+            f"Deleted {result.deleted_count} job folder(s).",
         )
 
 

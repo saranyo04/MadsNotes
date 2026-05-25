@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from application.results import SourceRequest, SourceText
+from core.workflow_models import SourceRequest, SourceText
 
 
 class PdfTextExtractor:

@@ -6,13 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from application.results import RenderArtifact, SourceText, StoredOutput
 from infrastructure.config import (
     JOB_FOLDER_PREFIX,
     OUTPUT_HTML_FILENAME,
     get_legacy_workspace_path,
     get_primary_workspace_path,
 )
+from core.workflow_models import RenderArtifact, SourceText, StoredOutput
 
 
 class JobStore:

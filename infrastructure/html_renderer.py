@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from html import escape
 
-from core.models import Document, ensure_document
-
-from application.results import RenderArtifact
+from core.models import Document, InlineText, ensure_document
+from core.workflow_models import RenderArtifact
 from infrastructure.config import APP_NAME
 
 
@@ -16,6 +15,12 @@ def _html_text(text: str) -> str:
     return escape(text).replace("\n", "<br>")
 
 
+def _inline_html(inline_text: InlineText | None) -> str:
+    if inline_text is None:
+        return ""
+    return _html_text(inline_text.text)
+
+
 class HtmlRenderer:
     def render(self, document: Document) -> RenderArtifact:
         document = ensure_document(document)
@@ -23,18 +28,23 @@ class HtmlRenderer:
         font_family = meta.get("font_family", "Microsoft YaHei, PingFang SC, sans-serif")
 
         body_parts: list[str] = []
+        has_tokens = False
         for block in document.blocks:
             if block.kind == "heading" and block.text is not None:
-                body_parts.append(f"<h2>{_html_text(block.text.text)}</h2>")
+                has_tokens = has_tokens or bool(block.text.tokens)
+                body_parts.append(f"<h2>{_inline_html(block.text)}</h2>")
             elif block.kind == "label" and block.text is not None:
-                body_parts.append(f"<p class='label'>{_html_text(block.text.text)}</p>")
+                has_tokens = has_tokens or bool(block.text.tokens)
+                body_parts.append(f"<p class='label'>{_inline_html(block.text)}</p>")
             elif block.kind == "paragraph" and block.text is not None:
                 text = block.text.text
                 cls = "cjk" if _is_cjk(text) else "latin"
-                body_parts.append(f"<p class='{cls}'>{_html_text(text)}</p>")
+                has_tokens = has_tokens or bool(block.text.tokens)
+                body_parts.append(f"<p class='{cls}'>{_inline_html(block.text)}</p>")
             elif block.kind == "list":
+                has_tokens = has_tokens or any(item.tokens for item in block.items)
                 li_html = "".join(
-                    f"<li>{_html_text(item.text)}</li>"
+                    f"<li>{_inline_html(item)}</li>"
                     for item in block.items
                     if item.text and item.text.strip()
                 )
@@ -97,4 +107,8 @@ class HtmlRenderer:
 </body>
 </html>
 """
-        return RenderArtifact(document=document, html=html_content, metadata={"body": body})
+        return RenderArtifact(
+            document=document,
+            html=html_content,
+            metadata={"body": body, "has_tokens": has_tokens},
+        )

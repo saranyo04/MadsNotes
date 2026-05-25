@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol, TypeVar
 
 from core.models import Document
-
-from .results import RenderArtifact, SourceRequest, SourceText, StoredOutput
+from core.workflow_models import RenderArtifact, SourceRequest, SourceText, StoredOutput
 
 T = TypeVar("T")
 
@@ -24,7 +24,12 @@ class EditorCodec(Protocol):
     def to_text(self, document: Document) -> str:
         ...
 
-    def from_text(self, editor_text: str, mode: str = "strict") -> Document:
+    def from_text(
+        self,
+        editor_text: str,
+        mode: str = "strict",
+        base_document: Document | None = None,
+    ) -> Document:
         ...
 
 
@@ -51,6 +56,9 @@ class ArtifactStore(Protocol):
     def delete_all(self) -> int:
         ...
 
+    def get_workspace_path(self) -> Path:
+        ...
+
 
 class TaskRunner(Protocol):
     def submit(
@@ -59,9 +67,4 @@ class TaskRunner(Protocol):
         on_success: Callable[[T], None],
         on_error: Callable[[Exception], None],
     ) -> None:
-        ...
-
-
-class WorkflowFactory(Protocol):
-    def __call__(self) -> object:
         ...
