@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QSize, QTimer, Qt
-from PySide6.QtGui import QAction, QColor, QIcon
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -23,12 +23,13 @@ from PySide6.QtWidgets import (
     QPushButton,
     QGraphicsDropShadowEffect,
     QPlainTextEdit,
+    QSizePolicy,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from app.editor_highlights import EditorHighlightController
 from app.settings_window import SettingsPage
 from app.shortcuts import install_shortcuts
 from app.theme_system import (
@@ -38,13 +39,39 @@ from app.theme_system import (
     theme_stylesheet,
 )
 from app.ui_config import APP_NAME, PDF_FILE_FILTER
-from core.note_highlights import HIGHLIGHT_COLOR_OPTIONS, HighlightSpan
 from infrastructure.saved_notes_store import SavedNote, SavedNotesStore
 
 if TYPE_CHECKING:
     from application.workflow import WorkflowService
     from app.qt_task_runner import QtTaskRunner
     from core.workflow_models import DeleteJobsResult, RenderResult, UiActionResult
+
+
+class _ElidedLabel(QLabel):
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self._full_text = text
+        self.setText(text)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._sync_elided_text()
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        super().setText(text)
+        self._sync_elided_text()
+
+    def _sync_elided_text(self) -> None:
+        if self.width() <= 0:
+            return
+        text = self.fontMetrics().elidedText(
+            self._full_text,
+            Qt.ElideRight,
+            self.width(),
+        )
+        if text != super().text():
+            super().setText(text)
 
 
 class MainWindow(QWidget):
@@ -60,11 +87,9 @@ class MainWindow(QWidget):
         self._workflow = workflow
         self._task_runner = task_runner
         self._busy = False
-        self.view_mode = "input"
         self._themes = load_themes()
         self._saved_notes = SavedNotesStore()
-        self._cached_editor_highlights: list[HighlightSpan] = []
-        self._cached_editor_highlight_text = ""
+        self._saved_note_delete_pending_path: Path | None = None
 
         self.setAcceptDrops(True)
         self._theme = get_theme(DEFAULT_THEME_NAME)
@@ -122,32 +147,10 @@ class MainWindow(QWidget):
         if default_index >= 0:
             self.mode_combo.setCurrentIndex(default_index)
 
-        self.open_editor_before_render_action = QAction(
-            "Open editor before generating notes",
-            self,
-            checkable=True,
-        )
-
-        self.view_label = QPushButton("Input")
-        self.view_label.setObjectName("segmentPill")
-        self.view_label.clicked.connect(self.handle_select_input_view)
-        self.editor_view_label = QPushButton("Editor")
-        self.editor_view_label.setObjectName("segmentPill")
-        self.editor_view_label.clicked.connect(self.handle_select_editor_view)
-        view_segment = QFrame()
-        view_segment.setObjectName("viewSegment")
-        view_segment_layout = QHBoxLayout()
-        view_segment_layout.setContentsMargins(2, 2, 2, 2)
-        view_segment_layout.setSpacing(0)
-        view_segment_layout.addWidget(self.view_label)
-        view_segment_layout.addWidget(self.editor_view_label)
-        view_segment.setLayout(view_segment_layout)
-
         self.text_input = QPlainTextEdit()
         self.text_input.installEventFilter(self)
         self.text_input.setPlaceholderText(self._input_placeholder_text())
         self.text_input.textChanged.connect(self.update_empty_state)
-        self._highlight_controller = EditorHighlightController(self.text_input)
         self.empty_state = self._build_empty_state()
 
         self.render_button = QPushButton("Generate Notes")
@@ -180,24 +183,6 @@ class MainWindow(QWidget):
         self.open_saved_notes_button.setIconSize(QSize(18, 18))
         self.open_saved_notes_button.clicked.connect(self.handle_open_saved_notes_folder)
 
-        self.highlight_color_combo = QComboBox()
-        self.highlight_color_combo.setObjectName("highlightColorCombo")
-        for color_key, label, _hex_value in HIGHLIGHT_COLOR_OPTIONS:
-            self.highlight_color_combo.addItem(label, color_key)
-            self.highlight_color_combo.setItemData(
-                self.highlight_color_combo.count() - 1,
-                QColor(_hex_value),
-                Qt.DecorationRole,
-            )
-
-        self.highlight_button = QPushButton("Highlight")
-        self.highlight_button.setObjectName("secondaryAction")
-        self.highlight_button.clicked.connect(self.handle_highlight_selection)
-
-        self.remove_highlight_button = QPushButton("Remove Highlight")
-        self.remove_highlight_button.setObjectName("secondaryAction")
-        self.remove_highlight_button.clicked.connect(self.handle_remove_highlight)
-
         app_title = QLabel(APP_NAME)
         app_title.setObjectName("appTitle")
 
@@ -205,11 +190,6 @@ class MainWindow(QWidget):
         top_bar.addStretch()
         top_bar.addWidget(mode_label)
         top_bar.addWidget(self.mode_combo)
-        top_bar.addSpacing(18)
-        view_text_label = QLabel("View")
-        view_text_label.setObjectName("fieldLabel")
-        top_bar.addWidget(view_text_label)
-        top_bar.addWidget(view_segment)
         top_bar.addStretch()
         top_bar_frame.setLayout(top_bar)
 
@@ -249,9 +229,6 @@ class MainWindow(QWidget):
         content_title_row.addWidget(content_title)
         content_title_row.addWidget(content_hint)
         content_title_row.addStretch()
-        content_title_row.addWidget(self.highlight_color_combo)
-        content_title_row.addWidget(self.highlight_button)
-        content_title_row.addWidget(self.remove_highlight_button)
         home_page_layout.addLayout(content_title_row)
         editor_card = QFrame()
         editor_card.setObjectName("editorCard")
@@ -266,7 +243,6 @@ class MainWindow(QWidget):
         self.settings_page = SettingsPage(
             themes=self._themes,
             current_theme_name=self._theme.name,
-            open_editor_before_render_action=self.open_editor_before_render_action,
             on_theme_changed=self.handle_theme_changed,
             on_delete_history=self.handle_delete_all_history,
             on_delete_saved_notes=self.handle_delete_all_saved_notes,
@@ -290,6 +266,7 @@ class MainWindow(QWidget):
 
         self.saved_notes_list = QListWidget()
         self.saved_notes_list.setObjectName("savedNotesList")
+        self.saved_notes_list.setSpacing(8)
         self.saved_notes_list.itemClicked.connect(self.handle_saved_note_clicked)
         self.saved_notes_list.itemDoubleClicked.connect(self.handle_saved_note_double_clicked)
         right_utility.addWidget(self.saved_notes_list, 1)
@@ -424,7 +401,7 @@ class MainWindow(QWidget):
             return
 
         self.empty_state.setGeometry(self.text_input.viewport().rect())
-        should_show = self.view_mode == "input" and not self._text_content().strip()
+        should_show = not self._text_content().strip()
         self.empty_state.setVisible(should_show)
         if should_show:
             self.empty_state.raise_()
@@ -437,8 +414,6 @@ class MainWindow(QWidget):
         self._busy = busy
         self.render_button.setEnabled(not busy)
         self.upload_button.setEnabled(not busy)
-        self.view_label.setEnabled(not busy)
-        self.editor_view_label.setEnabled(not busy)
         self.settings_page.set_busy(busy)
         if busy:
             self.open_last_saved_button.setEnabled(False)
@@ -446,8 +421,7 @@ class MainWindow(QWidget):
             self.save_note_button.setEnabled(False)
         else:
             self.sync_saved_notes_actions()
-        self.mode_combo.setEnabled(not busy and self.view_mode != "editor")
-        self._sync_highlight_actions()
+        self.mode_combo.setEnabled(not busy)
 
     def _run_task(self, fn, on_success) -> None:
         if self._busy:
@@ -471,46 +445,22 @@ class MainWindow(QWidget):
             return source.kind, source.path, dict(source.metadata)
         return "text", None, {}
 
-    def _current_source_text(self) -> str:
-        source = self._workflow.session.source
-        if source is not None:
-            return source.text
-        return self._text_content()
-
     def update_view_state(self) -> None:
-        in_editor = self.view_mode == "editor"
-        self.view_label.setProperty("active", not in_editor)
-        self.editor_view_label.setProperty("active", in_editor)
-        self._refresh_widget_style(self.view_label)
-        self._refresh_widget_style(self.editor_view_label)
-        self.mode_combo.setEnabled(not in_editor and not self._busy)
-        self._sync_highlight_actions()
-
-        if in_editor:
-            self.text_input.setPlaceholderText(
-                "Edit the text, then click Generate Notes."
-            )
-        else:
-            self.text_input.setPlaceholderText(self._input_placeholder_text())
+        self.mode_combo.setEnabled(not self._busy)
+        self.text_input.setPlaceholderText(self._input_placeholder_text())
         self.update_empty_state()
 
     def sync_saved_notes_actions(self) -> None:
         self.open_last_saved_button.setEnabled(not self._busy)
         self.open_saved_notes_button.setEnabled(not self._busy)
         self.save_note_button.setEnabled(not self._busy)
-        self._sync_highlight_actions()
-
-    def _sync_highlight_actions(self) -> None:
-        enabled = not self._busy and self.view_mode == "editor"
-        self.highlight_color_combo.setEnabled(enabled)
-        self.highlight_button.setEnabled(enabled)
-        self.remove_highlight_button.setEnabled(enabled)
 
     def refresh_saved_notes_list(self) -> None:
         self.saved_notes_list.clear()
 
         notes = self._filtered_saved_notes()
         if not notes:
+            self._saved_note_delete_pending_path = None
             empty_item = QListWidgetItem(self._empty_saved_notes_message())
             empty_item.setFlags(Qt.NoItemFlags)
             self.saved_notes_list.addItem(empty_item)
@@ -518,14 +468,54 @@ class MainWindow(QWidget):
             return
 
         for note in notes:
-            note_item = QListWidgetItem(
-                f"{note.title}\n{note.modified_at.strftime('%Y-%m-%d %H:%M')}"
-            )
+            note_item = QListWidgetItem()
+            note_item.setText(note.title)
             note_item.setData(Qt.UserRole, str(note.path))
             note_item.setToolTip(str(note.path))
             self.saved_notes_list.addItem(note_item)
+            row_widget = self._build_saved_note_row(note)
+            note_item.setSizeHint(QSize(0, 52))
+            self.saved_notes_list.setItemWidget(note_item, row_widget)
 
         self.sync_saved_notes_actions()
+
+    def _build_saved_note_row(self, note: SavedNote) -> QWidget:
+        row = QFrame()
+        row.setObjectName("savedNoteRow")
+        row.setFixedHeight(52)
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(10, 6, 8, 6)
+        layout.setSpacing(10)
+
+        title_label = _ElidedLabel(note.title)
+        title_label.setObjectName("savedNoteTitle")
+        title_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        title_label.setMinimumWidth(0)
+        title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        title_label.setToolTip(str(note.path))
+
+        delete_button = QToolButton()
+        delete_button.setObjectName("savedNoteDeleteButton")
+        delete_button.setAutoRaise(True)
+        delete_button.setFixedSize(28, 28)
+        delete_button.setIconSize(QSize(15, 15))
+        is_confirming = self._saved_note_delete_pending_path == note.path
+        delete_button.setProperty("confirming", is_confirming)
+        delete_button.setToolTip("Confirm delete" if is_confirming else "Delete note")
+        delete_button.setIcon(
+            self._icon("confirm-question" if is_confirming else "trash")
+        )
+        delete_button.clicked.connect(
+            lambda _checked=False, saved_note=note: (
+                self.handle_saved_note_delete_clicked(saved_note)
+            )
+        )
+
+        layout.addWidget(title_label, 1)
+        layout.addWidget(delete_button)
+        row.setLayout(layout)
+        return row
 
     def _note_from_item(self, item: QListWidgetItem) -> SavedNote | None:
         path_value = item.data(Qt.UserRole)
@@ -560,74 +550,12 @@ class MainWindow(QWidget):
     def _selected_structuring_mode(self) -> str:
         return self.mode_combo.currentData() or self._workflow.default_structuring_mode
 
-    def _set_input_view_text(self, text: str) -> None:
-        self.view_mode = "input"
-        self.text_input.setPlainText(text)
-        self._highlight_controller.clear()
-        self.update_view_state()
-
-    def _enter_editor_view(
+    def _set_workspace_text(
         self,
         editor_text: str,
-        highlights: list[HighlightSpan] | None = None,
     ) -> None:
-        self.view_mode = "editor"
         self.text_input.setPlainText(editor_text)
-        self._highlight_controller.set_highlights(highlights or [])
         self.update_view_state()
-
-    def _return_to_input_view(self) -> None:
-        self._cache_editor_highlights()
-        self.view_mode = "input"
-        self.text_input.setPlainText(self._current_source_text())
-        self._highlight_controller.clear()
-        self.update_view_state()
-
-    def handle_select_input_view(self) -> None:
-        if self._busy or self.view_mode != "editor":
-            return
-        self._return_to_input_view()
-
-    def handle_select_editor_view(self) -> None:
-        if self._busy or self.view_mode == "editor":
-            return
-        if (
-            self._cached_editor_highlights
-            and self._cached_editor_highlight_text
-            and self._text_content() == self._current_source_text()
-            and self._workflow.session.current_document is not None
-        ):
-            editor_text = self._cached_editor_highlight_text
-            self._enter_editor_view(editor_text, self._cached_editor_highlights)
-            return
-        self.handle_open_editor()
-
-    def handle_highlight_selection(self) -> None:
-        if self._busy or self.view_mode != "editor":
-            return
-        color = self.highlight_color_combo.currentData() or "yellow"
-        if not self._highlight_controller.apply_to_selection(color):
-            QMessageBox.information(
-                self,
-                APP_NAME,
-                "Select text in the editor first.",
-            )
-
-    def handle_remove_highlight(self) -> None:
-        if self._busy or self.view_mode != "editor":
-            return
-        if not self._highlight_controller.remove_from_selection():
-            QMessageBox.information(
-                self,
-                APP_NAME,
-                "Select highlighted text in the editor first.",
-            )
-
-    def _cache_editor_highlights(self) -> None:
-        if self.view_mode != "editor":
-            return
-        self._cached_editor_highlight_text = self._text_content()
-        self._cached_editor_highlights = self._highlight_controller.highlights()
 
     def _pdf_path_from_mime_data(self, mime_data) -> str | None:
         if not mime_data or not mime_data.hasUrls():
@@ -645,22 +573,17 @@ class MainWindow(QWidget):
 
     def _handle_pdf_file(self, file_path: str) -> None:
         mode = self._selected_structuring_mode()
-        open_editor_before_render = self.open_editor_before_render_action.isChecked()
         self._run_task(
             lambda: self._workflow.prepare_pdf_for_ui(
                 pdf_path=file_path,
                 mode=mode,
-                open_editor_before_render=open_editor_before_render,
             ),
             self._after_ui_action_ready,
         )
 
     def _after_ui_action_ready(self, result: "UiActionResult") -> None:
         self._workflow.apply_session(result.session)
-        if result.view_mode == "editor":
-            self._enter_editor_view(result.display_text)
-        else:
-            self._set_input_view_text(result.display_text)
+        self._set_workspace_text(result.display_text)
 
         if result.render_result is not None:
             self._after_render_ready(result.render_result)
@@ -733,67 +656,6 @@ class MainWindow(QWidget):
         event.acceptProposedAction()
         self._handle_pdf_file(pdf_path)
 
-    def handle_primary_action(self) -> None:
-        if self._busy:
-            return
-
-        visible_text = self._text_content()
-        if not visible_text.strip():
-            QMessageBox.warning(
-                self,
-                APP_NAME,
-                "Paste Chinese text or open a PDF first.",
-            )
-            return
-
-        structuring_mode = self._selected_structuring_mode()
-        source_kind, source_path, metadata = self._current_source_context()
-        view_mode = self.view_mode
-        open_editor_before_render = self.open_editor_before_render_action.isChecked()
-        self._run_task(
-            lambda: self._workflow.primary_action_for_ui(
-                view_mode=view_mode,
-                visible_text=visible_text,
-                mode=structuring_mode,
-                open_editor_before_render=open_editor_before_render,
-                source_kind=source_kind,
-                source_path=source_path,
-                metadata=metadata,
-                persist=True,
-            ),
-            self._after_ui_action_ready,
-        )
-
-    def handle_open_editor(self) -> None:
-        if self._busy:
-            return
-
-        if self.view_mode == "editor":
-            self._return_to_input_view()
-            return
-
-        visible_text = self._text_content()
-        if not visible_text.strip():
-            QMessageBox.warning(
-                self,
-                APP_NAME,
-                "Paste Chinese text or open a PDF first.",
-            )
-            return
-
-        source_kind, source_path, metadata = self._current_source_context()
-        mode = self._selected_structuring_mode()
-        self._run_task(
-            lambda: self._workflow.open_editor_for_ui(
-                text=visible_text,
-                mode=mode,
-                source_kind=source_kind,
-                source_path=source_path,
-                metadata=metadata,
-            ),
-            self._after_ui_action_ready,
-        )
-
     def _after_render_ready(self, result: "RenderResult") -> None:
         self._workflow.apply_session(result.session)
         if result.stored_output is None:
@@ -816,10 +678,9 @@ class MainWindow(QWidget):
 
         structuring_mode = self._selected_structuring_mode()
         source_kind, source_path, metadata = self._current_source_context()
-        view_mode = self.view_mode
         self._run_task(
             lambda: self._workflow.render_for_ui(
-                view_mode=view_mode,
+                view_mode="editor",
                 visible_text=visible_text,
                 mode=structuring_mode,
                 source_kind=source_kind,
@@ -861,22 +722,7 @@ class MainWindow(QWidget):
         if note_name is None:
             return
 
-        if self.view_mode == "editor":
-            self._save_note_text(visible_text, note_name)
-            return
-
-        source_kind, source_path, metadata = self._current_source_context()
-        mode = self._selected_structuring_mode()
-        self._run_task(
-            lambda: self._workflow.open_editor_for_ui(
-                text=visible_text,
-                mode=mode,
-                source_kind=source_kind,
-                source_path=source_path,
-                metadata=metadata,
-            ),
-            lambda result: self._after_note_editor_ready(result, note_name),
-        )
+        self._save_note_text(visible_text, note_name)
 
     def _prompt_note_name(self) -> str | None:
         dialog = QInputDialog(self)
@@ -890,14 +736,6 @@ class MainWindow(QWidget):
             return None
         return dialog.textValue().strip()
 
-    def _after_note_editor_ready(
-        self,
-        result: "UiActionResult",
-        note_name: str,
-    ) -> None:
-        self._workflow.apply_session(result.session)
-        self._save_note_text(result.display_text, note_name)
-
     def _save_note_text(self, text: str, note_name: str) -> None:
         if not text.strip():
             QMessageBox.information(
@@ -907,20 +745,12 @@ class MainWindow(QWidget):
             )
             return
 
-        saved_note = self._saved_notes.save(
+        self._saved_notes.save(
             text,
             note_name,
             rendered_output_path=self._current_rendered_output_path(),
-            highlights=self._highlight_controller.highlights()
-            if self.view_mode == "editor"
-            else [],
         )
         self.refresh_saved_notes_list()
-        QMessageBox.information(
-            self,
-            APP_NAME,
-            f"Saved note:\n{saved_note.title}",
-        )
 
     def _current_rendered_output_path(self) -> Path | None:
         last_output = self._workflow.session.last_output
@@ -967,6 +797,31 @@ class MainWindow(QWidget):
 
         self.open_local_path(rendered_output_path)
 
+    def handle_saved_note_delete_clicked(self, note: SavedNote) -> None:
+        if self._busy:
+            return
+
+        if self._saved_note_delete_pending_path != note.path:
+            self._saved_note_delete_pending_path = note.path
+            self.refresh_saved_notes_list()
+            return
+
+        try:
+            note.path.unlink()
+            metadata_path = note.path.with_suffix(".json")
+            if metadata_path.exists():
+                metadata_path.unlink()
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                f"Could not delete saved note:\n{note.path}\n\n{error}",
+            )
+            return
+
+        self._saved_note_delete_pending_path = None
+        self.refresh_saved_notes_list()
+
     def load_saved_note(self, note: SavedNote) -> None:
         try:
             note_text = self._saved_notes.load(note)
@@ -981,13 +836,12 @@ class MainWindow(QWidget):
 
         self._workflow.clear_active_state()
         self.show_home_page()
-        self._enter_editor_view(note_text, self._saved_notes.highlights(note))
+        self._set_workspace_text(note_text)
 
     def handle_clear_text(self) -> None:
         if self._busy:
             return
 
-        self.view_mode = "input"
         self.text_input.clear()
         self._workflow.clear_active_state()
         self.update_view_state()

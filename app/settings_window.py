@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFrame,
     QLabel,
@@ -22,7 +20,6 @@ class SettingsPage(QWidget):
         *,
         themes: dict[str, Theme],
         current_theme_name: str,
-        open_editor_before_render_action: QAction,
         on_theme_changed: Callable[[str], None],
         on_delete_history: Callable[[], None],
         on_delete_saved_notes: Callable[[], None],
@@ -57,21 +54,6 @@ class SettingsPage(QWidget):
         theme_group.layout().addWidget(self.current_theme_label)
         self.set_current_theme(current_theme_name)
 
-        behavior_group = self._build_group("Behavior")
-        self.open_editor_before_render_checkbox = QCheckBox(
-            "Open editor before generating notes"
-        )
-        self.open_editor_before_render_checkbox.setChecked(
-            open_editor_before_render_action.isChecked()
-        )
-        self.open_editor_before_render_checkbox.toggled.connect(
-            open_editor_before_render_action.setChecked
-        )
-        open_editor_before_render_action.toggled.connect(
-            self.open_editor_before_render_checkbox.setChecked
-        )
-        behavior_group.layout().addWidget(self.open_editor_before_render_checkbox)
-
         cleanup_group = self._build_group("Cleanup")
         cleanup_hint = QLabel(
             "History and saved notes are stored separately."
@@ -90,7 +72,6 @@ class SettingsPage(QWidget):
         layout.addWidget(header)
         layout.addWidget(helper)
         layout.addWidget(theme_group)
-        layout.addWidget(behavior_group)
         layout.addWidget(cleanup_group)
         layout.addStretch()
         self.setLayout(layout)
@@ -108,7 +89,6 @@ class SettingsPage(QWidget):
         return group
 
     def set_busy(self, busy: bool) -> None:
-        self.open_editor_before_render_checkbox.setEnabled(not busy)
         self.delete_history_button.setEnabled(not busy)
         self.delete_saved_notes_button.setEnabled(not busy)
 

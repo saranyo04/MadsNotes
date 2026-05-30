@@ -119,39 +119,29 @@ class WorkflowService:
         *,
         pdf_path: str,
         mode: str,
-        open_editor_before_render: bool,
     ) -> UiActionResult:
         source, session = self._load_source_for_session(
             SourceRequest(kind="pdf", path=pdf_path),
             self.session,
         )
-        if open_editor_before_render:
-            editor_view = self.build_editor_view(
-                text=source.text,
-                mode=mode,
-                source_kind=source.kind,
-                source_path=source.path,
-                metadata=source.metadata,
-                session=session,
-            )
-            return UiActionResult(
-                view_mode="editor",
-                display_text=editor_view.editor_text,
-                session=editor_view.session,
-            )
-
-        render_result = self.render_source(
+        editor_view = self.build_editor_view(
             text=source.text,
             mode=mode,
             source_kind=source.kind,
             source_path=source.path,
             metadata=source.metadata,
-            persist=True,
             session=session,
         )
+        render_result = self.render_editor(
+            editor_text=editor_view.editor_text,
+            source_kind=source.kind,
+            source_path=source.path,
+            metadata=source.metadata,
+            persist=True,
+            session=editor_view.session,
+        )
         return UiActionResult(
-            view_mode="input",
-            display_text=source.text,
+            display_text=editor_view.editor_text,
             render_result=render_result,
             session=render_result.session,
         )
@@ -199,7 +189,6 @@ class WorkflowService:
             metadata=metadata,
         )
         return UiActionResult(
-            view_mode="editor",
             display_text=editor_view.editor_text,
             session=editor_view.session,
         )
@@ -224,6 +213,13 @@ class WorkflowService:
         base_session = (session or self.session).with_source(source)
         document, next_session = self._build_document(source.text, mode, base_session)
         editor_text = self._editor_codec.to_text(document) if persist else None
+        if editor_text is not None:
+            document = self._editor_codec.from_text(
+                editor_text,
+                mode="strict",
+                base_document=document,
+            )
+            next_session = next_session.with_document(document, mode=mode)
         return self._render_document(
             source=source,
             document=document,
@@ -295,7 +291,6 @@ class WorkflowService:
                 session=base_session,
             )
             return UiActionResult(
-                view_mode="editor",
                 display_text=visible_text,
                 render_result=render_result,
                 session=render_result.session,
@@ -311,7 +306,6 @@ class WorkflowService:
             session=base_session,
         )
         return UiActionResult(
-            view_mode="input",
             display_text=visible_text,
             render_result=render_result,
             session=render_result.session,
@@ -323,7 +317,6 @@ class WorkflowService:
         view_mode: str,
         visible_text: str,
         mode: str,
-        open_editor_before_render: bool,
         source_kind: str = "text",
         source_path: str | None = None,
         metadata: dict[str, object] | None = None,
@@ -341,15 +334,6 @@ class WorkflowService:
                 metadata=metadata,
                 persist=persist,
                 session=base_session,
-            )
-
-        if open_editor_before_render:
-            return self.open_editor_for_ui(
-                text=visible_text,
-                mode=mode,
-                source_kind=source_kind,
-                source_path=source_path,
-                metadata=metadata,
             )
 
         return self.render_for_ui(

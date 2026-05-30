@@ -14,7 +14,7 @@ def install_shortcuts(window):
         shortcut.activated.connect(callback)
         window._shortcuts.append(shortcut)
 
-    add_shortcut("Ctrl+Return", window.handle_primary_action)
+    add_shortcut("Ctrl+Return", window.handle_generate_html)
 
     if hasattr(window, "handle_generate_html"):
         add_shortcut("Ctrl+Shift+Return", window.handle_generate_html)

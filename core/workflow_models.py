@@ -87,7 +87,6 @@ class RenderResult:
 
 @dataclass
 class UiActionResult:
-    view_mode: str
     display_text: str
     render_result: RenderResult | None = None
     session: WorkflowSession | None = None

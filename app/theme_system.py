@@ -221,7 +221,7 @@ def theme_stylesheet(theme: Theme) -> str:
                 min-height: 24px;
             }}
 
-            QComboBox#modeCombo, QComboBox#themeCombo, QComboBox#highlightColorCombo {{
+            QComboBox#modeCombo, QComboBox#themeCombo {{
                 background-color: {surface_lift};
                 border-color: {secondary_border};
                 padding-left: 14px;
@@ -303,12 +303,6 @@ def theme_stylesheet(theme: Theme) -> str:
                 border-radius: 18px;
             }}
 
-            QFrame#viewSegment {{
-                background-color: {secondary_softer};
-                border: 1px solid {secondary_border};
-                border-radius: 12px;
-            }}
-
             QFrame#utilityGroup {{
                 background-color: {secondary_softer};
                 border: 1px solid transparent;
@@ -337,20 +331,6 @@ def theme_stylesheet(theme: Theme) -> str:
             QLabel#fieldLabel {{
                 color: {text_soft};
                 background-color: transparent;
-            }}
-
-            QLabel#segmentPill, QPushButton#segmentPill {{
-                background-color: transparent;
-                color: {text_soft};
-                border: 1px solid transparent;
-                border-radius: 10px;
-                padding: 9px 16px;
-            }}
-
-            QLabel#segmentPill[active="true"], QPushButton#segmentPill[active="true"] {{
-                background-color: {primary_softer};
-                color: {primary_text};
-                border: 1px solid {primary};
             }}
 
             QFrame#emptyState {{
@@ -437,18 +417,52 @@ def theme_stylesheet(theme: Theme) -> str:
             }}
 
             QListWidget#savedNotesList::item {{
-                background-color: {surface_lift};
-                border: 1px solid transparent;
-                border-radius: 12px;
+                background-color: transparent;
+                border: none;
                 color: {text};
-                padding: 12px 14px;
-                margin-bottom: 8px;
+                padding: 0;
+                margin: 0;
             }}
 
             QListWidget#savedNotesList::item:hover,
             QListWidget#savedNotesList::item:selected {{
+                background-color: transparent;
+                border: none;
+            }}
+
+            QFrame#savedNoteRow {{
+                background-color: {surface_lift};
+                border: 1px solid transparent;
+                border-radius: 12px;
+            }}
+
+            QFrame#savedNoteRow:hover {{
                 background-color: {secondary_soft};
                 border-color: {secondary_border};
+            }}
+
+            QLabel#savedNoteTitle {{
+                color: {text};
+                background-color: transparent;
+                font-weight: 600;
+                font-size: 13px;
+            }}
+
+            QToolButton#savedNoteDeleteButton {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 7px;
+                padding: 3px;
+            }}
+
+            QToolButton#savedNoteDeleteButton:hover {{
+                background-color: {danger_bg};
+                border-color: {mix("#F2B9B0", surface, 0.35)};
+            }}
+
+            QToolButton#savedNoteDeleteButton[confirming="true"] {{
+                background-color: {danger_bg};
+                border-color: {mix("#F2B9B0", surface, 0.35)};
             }}
 
             QPushButton#utilityDanger {{

@@ -7,11 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core.note_highlights import (
-    HighlightSpan,
-    highlight_spans_from_value,
-    highlight_spans_to_dicts,
-)
 from infrastructure.config import get_saved_notes_path
 
 
@@ -60,7 +55,6 @@ class SavedNotesStore:
         note_name: str = "",
         *,
         rendered_output_path: Path | None = None,
-        highlights: list[HighlightSpan] | None = None,
     ) -> SavedNote:
         notes_path = self.get_notes_path()
         title = self._note_title(note_name)
@@ -69,16 +63,10 @@ class SavedNotesStore:
         metadata: dict[str, Any] = {}
         if rendered_output_path is not None:
             metadata["rendered_output_path"] = str(rendered_output_path)
-        if highlights:
-            metadata["highlights"] = highlight_spans_to_dicts(highlights)
         if metadata:
             self._write_note_metadata(path, metadata)
         modified_at = datetime.fromtimestamp(path.stat().st_mtime)
         return SavedNote(path=path, title=path.stem, modified_at=modified_at)
-
-    def highlights(self, note: SavedNote | Path) -> list[HighlightSpan]:
-        metadata = self._read_note_metadata(note)
-        return highlight_spans_from_value(metadata.get("highlights"))
 
     def rendered_output_path(self, note: SavedNote | Path) -> Path | None:
         metadata = self._read_note_metadata(note)
