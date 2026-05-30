@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, QEvent
+from PySide6.QtCore import QObject, QEvent, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 
 
@@ -10,6 +10,7 @@ def install_shortcuts(window):
 
     def add_shortcut(sequence, callback):
         shortcut = QShortcut(QKeySequence(sequence), window)
+        shortcut.setContext(Qt.WindowShortcut)
         shortcut.activated.connect(callback)
         window._shortcuts.append(shortcut)
 
@@ -17,6 +18,8 @@ def install_shortcuts(window):
 
     if hasattr(window, "handle_generate_html"):
         add_shortcut("Ctrl+Shift+Return", window.handle_generate_html)
+    if hasattr(window, "handle_save_note"):
+        add_shortcut("Ctrl+S", window.handle_save_note)
     clear_action = getattr(window, "handle_clear_text", window.text_input.clear)
     add_shortcut("Ctrl+L", clear_action)
     add_shortcut("Ctrl+W", window.close)

@@ -197,7 +197,7 @@ def theme_stylesheet(theme: Theme) -> str:
                 selection-color: {text};
             }}
 
-            QPushButton, QComboBox, QToolButton {{
+            QPushButton, QComboBox, QToolButton, QLineEdit {{
                 background-color: {surface};
                 color: {text};
                 border: 1px solid transparent;
@@ -205,12 +205,12 @@ def theme_stylesheet(theme: Theme) -> str:
                 padding: 11px 14px;
             }}
 
-            QPushButton:hover, QComboBox:hover, QToolButton:hover {{
+            QPushButton:hover, QComboBox:hover, QToolButton:hover, QLineEdit:hover {{
                 background-color: {primary_softer};
                 border-color: {primary};
             }}
 
-            QPushButton:disabled, QComboBox:disabled, QToolButton:disabled {{
+            QPushButton:disabled, QComboBox:disabled, QToolButton:disabled, QLineEdit:disabled {{
                 color: {text_muted};
                 background-color: {surface_deep};
                 border-color: {border_soft};
@@ -225,6 +225,18 @@ def theme_stylesheet(theme: Theme) -> str:
                 background-color: {surface_lift};
                 border-color: {secondary_border};
                 padding-left: 14px;
+            }}
+
+            QLineEdit#savedNotesSearch {{
+                background-color: {surface_lift};
+                border-color: {secondary_border};
+                selection-background-color: {primary};
+                selection-color: {text};
+            }}
+
+            QLineEdit#savedNotesSearch:focus {{
+                border-color: {primary};
+                background-color: {primary_softer};
             }}
 
             QToolButton#settingsButton {{
@@ -411,6 +423,32 @@ def theme_stylesheet(theme: Theme) -> str:
             QPushButton#secondaryAction:hover {{
                 background-color: {secondary_soft};
                 border-color: {secondary};
+            }}
+
+            QScrollArea {{
+                background-color: transparent;
+                border: none;
+            }}
+
+            QListWidget#savedNotesList {{
+                background-color: transparent;
+                border: none;
+                outline: none;
+            }}
+
+            QListWidget#savedNotesList::item {{
+                background-color: {surface_lift};
+                border: 1px solid transparent;
+                border-radius: 12px;
+                color: {text};
+                padding: 12px 14px;
+                margin-bottom: 8px;
+            }}
+
+            QListWidget#savedNotesList::item:hover,
+            QListWidget#savedNotesList::item:selected {{
+                background-color: {secondary_soft};
+                border-color: {secondary_border};
             }}
 
             QPushButton#utilityDanger {{

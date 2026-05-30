@@ -6,19 +6,17 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QFrame,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from app.theme_system import Theme, sorted_theme_names
-from app.ui_config import APP_NAME
 
 
-class SettingsWindow(QDialog):
+class SettingsPage(QWidget):
     def __init__(
         self,
         *,
@@ -26,32 +24,25 @@ class SettingsWindow(QDialog):
         current_theme_name: str,
         open_editor_before_render_action: QAction,
         on_theme_changed: Callable[[str], None],
-        on_delete_saved_files: Callable[[], None],
+        on_delete_history: Callable[[], None],
+        on_delete_saved_notes: Callable[[], None],
         parent=None,
     ) -> None:
         super().__init__(parent)
 
+        self._themes = themes
         self._on_theme_changed = on_theme_changed
 
-        self.setWindowTitle(f"{APP_NAME} Settings")
-        self.setModal(False)
-        self.resize(420, 300)
-
         layout = QVBoxLayout()
-        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
 
-        title = QLabel("Settings")
-        title.setObjectName("sectionTitle")
-        layout.addWidget(title)
+        header = QLabel("Settings")
+        header.setObjectName("sectionTitle")
+        helper = QLabel("Adjust how notes are generated and saved.")
+        helper.setObjectName("panelHint")
 
-        theme_group = QFrame()
-        theme_group.setObjectName("utilityGroup")
-        theme_layout = QVBoxLayout()
-        theme_layout.setContentsMargins(16, 16, 16, 16)
-        theme_layout.setSpacing(10)
-        theme_label = QLabel("Theme")
-        theme_label.setObjectName("panelHint")
+        theme_group = self._build_group("Theme")
         self.theme_combo = QComboBox()
         self.theme_combo.setObjectName("themeCombo")
         for theme_name in sorted_theme_names(themes):
@@ -60,17 +51,13 @@ class SettingsWindow(QDialog):
         if theme_index >= 0:
             self.theme_combo.setCurrentIndex(theme_index)
         self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
-        theme_layout.addWidget(theme_label)
-        theme_layout.addWidget(self.theme_combo)
-        theme_group.setLayout(theme_layout)
+        self.current_theme_label = QLabel()
+        self.current_theme_label.setObjectName("panelHint")
+        theme_group.layout().addWidget(self.theme_combo)
+        theme_group.layout().addWidget(self.current_theme_label)
+        self.set_current_theme(current_theme_name)
 
-        generation_group = QFrame()
-        generation_group.setObjectName("utilityGroup")
-        generation_layout = QVBoxLayout()
-        generation_layout.setContentsMargins(16, 16, 16, 16)
-        generation_layout.setSpacing(10)
-        generation_label = QLabel("Before generating")
-        generation_label.setObjectName("panelHint")
+        behavior_group = self._build_group("Behavior")
         self.open_editor_before_render_checkbox = QCheckBox(
             "Open editor before generating notes"
         )
@@ -83,47 +70,62 @@ class SettingsWindow(QDialog):
         open_editor_before_render_action.toggled.connect(
             self.open_editor_before_render_checkbox.setChecked
         )
-        generation_layout.addWidget(generation_label)
-        generation_layout.addWidget(self.open_editor_before_render_checkbox)
-        generation_group.setLayout(generation_layout)
+        behavior_group.layout().addWidget(self.open_editor_before_render_checkbox)
 
-        cleanup_group = QFrame()
-        cleanup_group.setObjectName("utilityGroup")
-        cleanup_layout = QVBoxLayout()
-        cleanup_layout.setContentsMargins(16, 16, 16, 16)
-        cleanup_layout.setSpacing(10)
-        cleanup_label = QLabel("Cleanup")
-        cleanup_label.setObjectName("panelHint")
-        self.delete_saved_files_button = QPushButton("Delete saved files")
-        self.delete_saved_files_button.setObjectName("utilityDanger")
-        self.delete_saved_files_button.clicked.connect(on_delete_saved_files)
-        cleanup_layout.addWidget(cleanup_label)
-        cleanup_layout.addWidget(self.delete_saved_files_button)
-        cleanup_group.setLayout(cleanup_layout)
+        cleanup_group = self._build_group("Cleanup")
+        cleanup_hint = QLabel(
+            "History and saved notes are stored separately."
+        )
+        cleanup_hint.setObjectName("panelHint")
+        self.delete_history_button = QPushButton("Delete All History")
+        self.delete_history_button.setObjectName("utilityDanger")
+        self.delete_history_button.clicked.connect(on_delete_history)
+        self.delete_saved_notes_button = QPushButton("Delete All Saved Notes")
+        self.delete_saved_notes_button.setObjectName("utilityDanger")
+        self.delete_saved_notes_button.clicked.connect(on_delete_saved_notes)
+        cleanup_group.layout().addWidget(cleanup_hint)
+        cleanup_group.layout().addWidget(self.delete_history_button)
+        cleanup_group.layout().addWidget(self.delete_saved_notes_button)
 
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_button = QPushButton("Close")
-        close_button.setObjectName("secondaryAction")
-        close_button.clicked.connect(self.close)
-        close_row.addWidget(close_button)
-
+        layout.addWidget(header)
+        layout.addWidget(helper)
         layout.addWidget(theme_group)
-        layout.addWidget(generation_group)
+        layout.addWidget(behavior_group)
         layout.addWidget(cleanup_group)
         layout.addStretch()
-        layout.addLayout(close_row)
         self.setLayout(layout)
+
+    def _build_group(self, title: str) -> QFrame:
+        group = QFrame()
+        group.setObjectName("utilityGroup")
+        layout = QVBoxLayout()
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        label = QLabel(title)
+        label.setObjectName("sectionTitle")
+        layout.addWidget(label)
+        group.setLayout(layout)
+        return group
 
     def set_busy(self, busy: bool) -> None:
         self.open_editor_before_render_checkbox.setEnabled(not busy)
-        self.delete_saved_files_button.setEnabled(not busy)
+        self.delete_history_button.setEnabled(not busy)
+        self.delete_saved_notes_button.setEnabled(not busy)
 
     def set_current_theme(self, theme_name: str) -> None:
         theme_index = self.theme_combo.findText(theme_name)
-        if theme_index < 0 or self.theme_combo.currentIndex() == theme_index:
+        if theme_index >= 0 and self.theme_combo.currentIndex() != theme_index:
+            was_blocked = self.theme_combo.blockSignals(True)
+            self.theme_combo.setCurrentIndex(theme_index)
+            self.theme_combo.blockSignals(was_blocked)
+
+        theme = self._themes.get(theme_name)
+        if theme is None:
+            self.current_theme_label.setText("Current theme: System fallback")
             return
 
-        was_blocked = self.theme_combo.blockSignals(True)
-        self.theme_combo.setCurrentIndex(theme_index)
-        self.theme_combo.blockSignals(was_blocked)
+        tokens = theme.tokens
+        self.current_theme_label.setText(
+            "Current theme: "
+            f"{theme.name} | Primary {tokens.primary} | Secondary {tokens.secondary}"
+        )

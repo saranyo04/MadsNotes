@@ -3,55 +3,35 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from infrastructure.config import (
-    JOB_FOLDER_PREFIX,
     OUTPUT_HTML_FILENAME,
-    get_legacy_workspace_path,
-    get_primary_workspace_path,
+    get_history_path,
 )
 from core.workflow_models import RenderArtifact, SourceText, StoredOutput
 
 
 class JobStore:
     def get_workspace_path(self) -> Path:
-        primary_workspace = get_primary_workspace_path()
-        legacy_workspace = get_legacy_workspace_path()
-
-        if primary_workspace.is_dir():
-            return primary_workspace
-
-        if legacy_workspace.is_dir():
-            try:
-                legacy_workspace.rename(primary_workspace)
-                return primary_workspace
-            except OSError:
-                return legacy_workspace
-
-        primary_workspace.mkdir(exist_ok=True)
-        return primary_workspace
+        history_path = get_history_path()
+        history_path.mkdir(parents=True, exist_ok=True)
+        return history_path
 
     def _job_directories(self, workspace: Path) -> Iterator[Path]:
-        return (
-            path
-            for path in workspace.iterdir()
-            if path.is_dir() and path.name.startswith(JOB_FOLDER_PREFIX)
-        )
+        return (path for path in workspace.iterdir() if path.is_dir())
 
     def create_job(self) -> Path:
         workspace = self.get_workspace_path()
-        existing_ids = (
-            int(suffix)
-            for path in self._job_directories(workspace)
-            if (suffix := path.name[len(JOB_FOLDER_PREFIX):]).isdigit()
-        )
-        next_id = max(existing_ids, default=0) + 1
-        job_path = workspace / f"{JOB_FOLDER_PREFIX}{next_id:03d}"
-        (job_path / "input").mkdir(parents=True)
-        (job_path / "output").mkdir()
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        job_path = workspace / timestamp
+        suffix = 2
+        while job_path.exists():
+            job_path = workspace / f"{timestamp}_{suffix:02d}"
+            suffix += 1
+        job_path.mkdir(parents=True)
         return job_path
 
     def write_job_text(self, job_path: Path, relative_path: str, content: str) -> Path:
@@ -80,7 +60,7 @@ class JobStore:
         blocks = render_artifact.document.blocks
         return {
             "job": job_name,
-            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now().isoformat(timespec="seconds"),
             "source_kind": source_text.kind,
             "source_path": source_text.path,
             "structuring_mode": session_meta.get("structuring_mode"),
@@ -97,15 +77,15 @@ class JobStore:
         session_meta: dict[str, object],
     ) -> StoredOutput:
         job_path = self.create_job()
-        output_path = job_path / "output" / OUTPUT_HTML_FILENAME
+        output_path = job_path / OUTPUT_HTML_FILENAME
         source_file_path: Path | None = None
         structured_path: Path | None = None
 
         if source_text.text.strip():
-            source_file_path = self.write_job_text(job_path, "input/source.txt", source_text.text)
+            source_file_path = self.write_job_text(job_path, "source.txt", source_text.text)
 
         if editor_text and editor_text.strip():
-            structured_path = self.write_job_text(job_path, "input/structured.txt", editor_text)
+            structured_path = self.write_job_text(job_path, "structured.md", editor_text)
 
         output_path.write_text(render_artifact.html, encoding="utf-8")
         meta = self.build_job_meta(
@@ -114,7 +94,7 @@ class JobStore:
             session_meta=session_meta,
             job_name=job_path.name,
         )
-        meta_path = self.write_job_json(job_path, "meta.json", meta)
+        meta_path = self.write_job_json(job_path, "metadata.json", meta)
         return StoredOutput(
             job_path=job_path,
             output_path=output_path,
@@ -126,10 +106,8 @@ class JobStore:
 
     def delete_all(self) -> int:
         deleted_count = 0
-        for workspace in {get_primary_workspace_path(), get_legacy_workspace_path()}:
-            if not workspace.exists():
-                continue
-            for job_path in self._job_directories(workspace):
-                shutil.rmtree(job_path)
-                deleted_count += 1
+        workspace = self.get_workspace_path()
+        for job_path in self._job_directories(workspace):
+            shutil.rmtree(job_path)
+            deleted_count += 1
         return deleted_count

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,19 +10,25 @@ from PySide6.QtGui import QAction, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QGraphicsDropShadowEffect,
     QPlainTextEdit,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from app.settings_window import SettingsWindow
+from app.settings_window import SettingsPage
 from app.shortcuts import install_shortcuts
 from app.theme_system import (
     DEFAULT_THEME_NAME,
@@ -30,6 +37,7 @@ from app.theme_system import (
     theme_stylesheet,
 )
 from app.ui_config import APP_NAME, PDF_FILE_FILTER
+from infrastructure.saved_notes_store import SavedNote, SavedNotesStore
 
 if TYPE_CHECKING:
     from application.workflow import WorkflowService
@@ -52,7 +60,7 @@ class MainWindow(QWidget):
         self._busy = False
         self.view_mode = "input"
         self._themes = load_themes()
-        self._settings_window: SettingsWindow | None = None
+        self._saved_notes = SavedNotesStore()
 
         self.setAcceptDrops(True)
         self._theme = get_theme(DEFAULT_THEME_NAME)
@@ -149,17 +157,23 @@ class MainWindow(QWidget):
         self.upload_button.setIconSize(QSize(20, 20))
         self.upload_button.clicked.connect(self.handle_pdf_upload)
 
-        self.open_last_output_button = QPushButton("Open last notes")
-        self.open_last_output_button.setObjectName("secondaryAction")
-        self.open_last_output_button.setIcon(self._icon("saved-notes"))
-        self.open_last_output_button.setIconSize(QSize(18, 18))
-        self.open_last_output_button.clicked.connect(self.handle_open_last_output)
+        self.save_note_button = QPushButton("Save Note")
+        self.save_note_button.setObjectName("secondaryAction")
+        self.save_note_button.setIcon(self._icon("saved-notes"))
+        self.save_note_button.setIconSize(QSize(20, 20))
+        self.save_note_button.clicked.connect(self.handle_save_note)
 
-        self.open_job_folder_button = QPushButton("Open saved files")
-        self.open_job_folder_button.setObjectName("secondaryAction")
-        self.open_job_folder_button.setIcon(self._icon("files"))
-        self.open_job_folder_button.setIconSize(QSize(18, 18))
-        self.open_job_folder_button.clicked.connect(self.handle_open_job_folder)
+        self.open_last_saved_button = QPushButton("Open Last Saved")
+        self.open_last_saved_button.setObjectName("secondaryAction")
+        self.open_last_saved_button.setIcon(self._icon("saved-notes"))
+        self.open_last_saved_button.setIconSize(QSize(18, 18))
+        self.open_last_saved_button.clicked.connect(self.handle_open_last_saved_note)
+
+        self.open_saved_notes_button = QPushButton("Open Saved Notes")
+        self.open_saved_notes_button.setObjectName("secondaryAction")
+        self.open_saved_notes_button.setIcon(self._icon("files"))
+        self.open_saved_notes_button.setIconSize(QSize(18, 18))
+        self.open_saved_notes_button.clicked.connect(self.handle_open_saved_notes_folder)
 
         app_title = QLabel(APP_NAME)
         app_title.setObjectName("appTitle")
@@ -179,10 +193,9 @@ class MainWindow(QWidget):
         nav_icons = {
             "Home": "home",
             "History": "history",
-            "Files": "files",
             "Settings": "settings",
         }
-        for index, entry in enumerate(("Home", "History", "Files", "Settings")):
+        for index, entry in enumerate(("Home", "History", "Settings")):
             nav_button = QPushButton(entry)
             nav_button.setObjectName("navButton")
             nav_button.setProperty("active", index == 0)
@@ -190,11 +203,20 @@ class MainWindow(QWidget):
             nav_button.setIconSize(QSize(20, 20))
             if entry == "Settings":
                 self.settings_nav_button = nav_button
-                nav_button.clicked.connect(self.handle_open_settings)
+                nav_button.clicked.connect(self.show_settings_page)
+            elif entry == "Home":
+                self.home_nav_button = nav_button
+                nav_button.clicked.connect(self.show_home_page)
+            elif entry == "History":
+                nav_button.clicked.connect(self.handle_open_history_folder)
             left_nav.addWidget(nav_button)
         left_nav.addStretch()
         left_nav_frame.setLayout(left_nav)
 
+        home_page = QWidget()
+        home_page_layout = QVBoxLayout()
+        home_page_layout.setContentsMargins(0, 0, 0, 0)
+        home_page_layout.setSpacing(14)
         content_title_row = QHBoxLayout()
         content_title_row.setSpacing(14)
         content_title = QLabel("Text")
@@ -204,7 +226,7 @@ class MainWindow(QWidget):
         content_title_row.addWidget(content_title)
         content_title_row.addWidget(content_hint)
         content_title_row.addStretch()
-        main_content.addLayout(content_title_row)
+        home_page_layout.addLayout(content_title_row)
         editor_card = QFrame()
         editor_card.setObjectName("editorCard")
         editor_card_layout = QVBoxLayout()
@@ -212,29 +234,43 @@ class MainWindow(QWidget):
         editor_card_layout.setSpacing(0)
         editor_card_layout.addWidget(self.text_input)
         editor_card.setLayout(editor_card_layout)
-        main_content.addWidget(editor_card, 1)
+        home_page_layout.addWidget(editor_card, 1)
+        home_page.setLayout(home_page_layout)
+
+        self.settings_page = SettingsPage(
+            themes=self._themes,
+            current_theme_name=self._theme.name,
+            open_editor_before_render_action=self.open_editor_before_render_action,
+            on_theme_changed=self.handle_theme_changed,
+            on_delete_history=self.handle_delete_all_history,
+            on_delete_saved_notes=self.handle_delete_all_saved_notes,
+        )
+
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(home_page)
+        self.content_stack.addWidget(self.settings_page)
+        main_content.addWidget(self.content_stack, 1)
         main_content_frame.setLayout(main_content)
 
         utility_title = QLabel("Saved Notes")
         utility_title.setObjectName("sectionTitle")
         right_utility.addWidget(utility_title)
 
-        files_group = QFrame()
-        files_group.setObjectName("utilityGroup")
-        files_group_layout = QVBoxLayout()
-        files_group_layout.setContentsMargins(16, 16, 16, 16)
-        files_group_layout.setSpacing(12)
-        files_group_label = QLabel("Open your latest generated notes or saved files.")
-        files_group_label.setObjectName("panelHint")
-        files_group_layout.addWidget(files_group_label)
-        files_group_layout.addWidget(self.open_last_output_button)
-        files_group_layout.addWidget(self.open_job_folder_button)
-        files_group.setLayout(files_group_layout)
+        self.saved_notes_search = QLineEdit()
+        self.saved_notes_search.setObjectName("savedNotesSearch")
+        self.saved_notes_search.setPlaceholderText("Search saved notes...")
+        self.saved_notes_search.textChanged.connect(self.refresh_saved_notes_list)
+        right_utility.addWidget(self.saved_notes_search)
 
-        right_utility.addWidget(files_group)
+        self.saved_notes_list = QListWidget()
+        self.saved_notes_list.setObjectName("savedNotesList")
+        self.saved_notes_list.itemClicked.connect(self.handle_saved_note_clicked)
+        self.saved_notes_list.itemDoubleClicked.connect(self.handle_saved_note_double_clicked)
+        right_utility.addWidget(self.saved_notes_list, 1)
+        right_utility.addWidget(self.open_last_saved_button)
+        right_utility.addWidget(self.open_saved_notes_button)
         right_utility.addStretch()
         right_utility_frame.setLayout(right_utility)
-        self._add_soft_shadow(files_group, blur_radius=14, y_offset=2, alpha=8)
 
         middle_layout.addWidget(left_nav_frame)
         middle_layout.addWidget(main_content_frame, 1)
@@ -242,6 +278,7 @@ class MainWindow(QWidget):
 
         button_row.addWidget(self.upload_button, 1)
         button_row.addWidget(self.render_button, 1)
+        button_row.addWidget(self.save_note_button, 1)
         bottom_actions_frame.setLayout(button_row)
 
         main_layout.addWidget(top_bar_frame)
@@ -253,10 +290,12 @@ class MainWindow(QWidget):
         self._add_soft_shadow(left_nav_frame, blur_radius=18, y_offset=4, alpha=10)
         self._add_soft_shadow(main_content_frame, blur_radius=26, y_offset=5, alpha=20)
         self._add_soft_shadow(editor_card, blur_radius=22, y_offset=4, alpha=14)
+        self._add_settings_group_shadows()
         self._add_soft_shadow(right_utility_frame, blur_radius=18, y_offset=3, alpha=12)
         self._add_soft_shadow(bottom_actions_frame, blur_radius=18, y_offset=3, alpha=10)
         self.update_view_state()
         self.sync_saved_notes_actions()
+        self.refresh_saved_notes_list()
         install_shortcuts(self)
 
         if initial_file_path:
@@ -271,32 +310,31 @@ class MainWindow(QWidget):
     def handle_theme_changed(self, theme_name: str) -> None:
         self._theme = self._themes.get(theme_name) or get_theme()
         self.setStyleSheet(theme_stylesheet(self._theme))
-        if self._settings_window is not None:
-            self._settings_window.setStyleSheet(self.styleSheet())
-            self._settings_window.set_current_theme(self._theme.name)
+        self.settings_page.set_current_theme(self._theme.name)
         self.update_view_state()
 
-    def handle_open_settings(self) -> None:
-        if self._settings_window is None:
-            self._settings_window = SettingsWindow(
-                themes=self._themes,
-                current_theme_name=self._theme.name,
-                open_editor_before_render_action=self.open_editor_before_render_action,
-                on_theme_changed=self.handle_theme_changed,
-                on_delete_saved_files=self.handle_delete_all_jobs,
-                parent=self,
-            )
-            self._settings_window.setStyleSheet(self.styleSheet())
-            self._settings_window.set_busy(self._busy)
+    def show_home_page(self) -> None:
+        self.content_stack.setCurrentIndex(0)
+        self._set_nav_active(self.home_nav_button)
 
-        self._settings_window.show()
-        self._settings_window.raise_()
-        self._settings_window.activateWindow()
+    def show_settings_page(self) -> None:
+        self.content_stack.setCurrentIndex(1)
+        self._set_nav_active(self.settings_nav_button)
+
+    def _set_nav_active(self, active_button: QPushButton) -> None:
+        for button in (self.home_nav_button, self.settings_nav_button):
+            button.setProperty("active", button is active_button)
+            self._refresh_widget_style(button)
 
     def _refresh_widget_style(self, widget: QWidget) -> None:
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()
+
+    def _add_settings_group_shadows(self) -> None:
+        for group in self.settings_page.findChildren(QFrame):
+            if group.objectName() == "utilityGroup":
+                self._add_soft_shadow(group, blur_radius=14, y_offset=2, alpha=8)
 
     def _add_soft_shadow(
         self,
@@ -375,11 +413,11 @@ class MainWindow(QWidget):
         self.upload_button.setEnabled(not busy)
         self.view_label.setEnabled(not busy)
         self.editor_view_label.setEnabled(not busy)
-        if self._settings_window is not None:
-            self._settings_window.set_busy(busy)
+        self.settings_page.set_busy(busy)
         if busy:
-            self.open_last_output_button.setEnabled(False)
-            self.open_job_folder_button.setEnabled(False)
+            self.open_last_saved_button.setEnabled(False)
+            self.open_saved_notes_button.setEnabled(False)
+            self.save_note_button.setEnabled(False)
         else:
             self.sync_saved_notes_actions()
         self.mode_combo.setEnabled(not busy and self.view_mode != "editor")
@@ -399,18 +437,6 @@ class MainWindow(QWidget):
             self._report_error(error)
 
         self._task_runner.submit(fn, handle_success, handle_error)
-
-    def _last_output_path(self) -> Path | None:
-        output = self._workflow.session.last_output
-        if output is None:
-            return None
-        return output.output_path
-
-    def _last_job_path(self) -> Path | None:
-        output = self._workflow.session.last_output
-        if output is None:
-            return None
-        return output.job_path
 
     def _current_source_context(self) -> tuple[str, str | None, dict[str, object]]:
         source = self._workflow.session.source
@@ -441,12 +467,57 @@ class MainWindow(QWidget):
         self.update_empty_state()
 
     def sync_saved_notes_actions(self) -> None:
-        output_path = self._last_output_path()
-        job_path = self._last_job_path()
-        has_output = bool(output_path and output_path.exists())
-        has_job_folder = bool(job_path and job_path.exists())
-        self.open_last_output_button.setEnabled(has_output and not self._busy)
-        self.open_job_folder_button.setEnabled(has_job_folder and not self._busy)
+        self.open_last_saved_button.setEnabled(not self._busy)
+        self.open_saved_notes_button.setEnabled(not self._busy)
+        self.save_note_button.setEnabled(not self._busy)
+
+    def refresh_saved_notes_list(self) -> None:
+        self.saved_notes_list.clear()
+
+        notes = self._filtered_saved_notes()
+        if not notes:
+            empty_item = QListWidgetItem(self._empty_saved_notes_message())
+            empty_item.setFlags(Qt.NoItemFlags)
+            self.saved_notes_list.addItem(empty_item)
+            self.sync_saved_notes_actions()
+            return
+
+        for note in notes:
+            note_item = QListWidgetItem(
+                f"{note.title}\n{note.modified_at.strftime('%Y-%m-%d %H:%M')}"
+            )
+            note_item.setData(Qt.UserRole, str(note.path))
+            note_item.setToolTip(str(note.path))
+            self.saved_notes_list.addItem(note_item)
+
+        self.sync_saved_notes_actions()
+
+    def _note_from_item(self, item: QListWidgetItem) -> SavedNote | None:
+        path_value = item.data(Qt.UserRole)
+        if not path_value:
+            return None
+        note_path = Path(path_value)
+        try:
+            modified_at = note_path.stat().st_mtime
+        except OSError:
+            return None
+        return SavedNote(
+            path=note_path,
+            title=note_path.stem,
+            modified_at=datetime.fromtimestamp(modified_at),
+        )
+
+    def _filtered_saved_notes(self) -> list[SavedNote]:
+        notes = self._saved_notes.list_notes()
+        query = self.saved_notes_search.text().strip().casefold()
+        if not query:
+            return notes
+        return [note for note in notes if query in note.title.casefold()]
+
+    def _empty_saved_notes_message(self) -> str:
+        if self._saved_notes.list_notes() and self.saved_notes_search.text().strip():
+            return "No matching notes found."
+        return "No saved notes yet."
 
     def _text_content(self) -> str:
         return self.text_input.toPlainText()
@@ -694,29 +765,141 @@ class MainWindow(QWidget):
             return
         self._handle_pdf_file(file_path)
 
-    def handle_open_last_output(self) -> None:
-        output_path = self._last_output_path()
-        if not output_path or not output_path.exists():
-            QMessageBox.information(
+    def handle_save_note(self) -> None:
+        if self._busy:
+            return
+
+        visible_text = self._text_content()
+        if not visible_text.strip():
+            QMessageBox.warning(
                 self,
                 APP_NAME,
-                "Generate notes once before opening the last notes.",
+                "Paste Chinese text, open a PDF, or load a saved note first.",
             )
             return
 
-        self.open_local_path(output_path)
+        note_name = self._prompt_note_name()
+        if note_name is None:
+            return
 
-    def handle_open_job_folder(self) -> None:
-        job_path = self._last_job_path()
-        if not job_path or not job_path.exists():
+        if self.view_mode == "editor":
+            self._save_note_text(visible_text, note_name)
+            return
+
+        source_kind, source_path, metadata = self._current_source_context()
+        mode = self._selected_structuring_mode()
+        self._run_task(
+            lambda: self._workflow.open_editor_for_ui(
+                text=visible_text,
+                mode=mode,
+                source_kind=source_kind,
+                source_path=source_path,
+                metadata=metadata,
+            ),
+            lambda result: self._after_note_editor_ready(result, note_name),
+        )
+
+    def _prompt_note_name(self) -> str | None:
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Save Note")
+        dialog.setLabelText("Note Name:")
+        dialog.setOkButtonText("Save")
+        dialog.setCancelButtonText("Cancel")
+        dialog.setTextEchoMode(QLineEdit.Normal)
+
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        return dialog.textValue().strip()
+
+    def _after_note_editor_ready(
+        self,
+        result: "UiActionResult",
+        note_name: str,
+    ) -> None:
+        self._workflow.apply_session(result.session)
+        self._save_note_text(result.display_text, note_name)
+
+    def _save_note_text(self, text: str, note_name: str) -> None:
+        if not text.strip():
             QMessageBox.information(
                 self,
                 APP_NAME,
-                "Generate notes once before opening saved files.",
+                "There is no note text to save.",
             )
             return
 
-        self.open_local_path(job_path)
+        saved_note = self._saved_notes.save(
+            text,
+            note_name,
+            rendered_output_path=self._current_rendered_output_path(),
+        )
+        self.refresh_saved_notes_list()
+        QMessageBox.information(
+            self,
+            APP_NAME,
+            f"Saved note:\n{saved_note.title}",
+        )
+
+    def _current_rendered_output_path(self) -> Path | None:
+        last_output = self._workflow.session.last_output
+        if last_output is None or not last_output.output_path.exists():
+            return None
+        return last_output.output_path
+
+    def handle_open_last_saved_note(self) -> None:
+        note = self._saved_notes.newest_note()
+        if note is None:
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "No saved notes yet. Use Save Note to create one.",
+            )
+            return
+
+        self.load_saved_note(note)
+
+    def handle_open_saved_notes_folder(self) -> None:
+        self.open_local_path(self._saved_notes.get_notes_path())
+
+    def handle_open_history_folder(self) -> None:
+        self.open_local_path(self._workflow.jobs_workspace_path)
+
+    def handle_saved_note_clicked(self, item: QListWidgetItem) -> None:
+        note = self._note_from_item(item)
+        if note is not None:
+            self.load_saved_note(note)
+
+    def handle_saved_note_double_clicked(self, item: QListWidgetItem) -> None:
+        note = self._note_from_item(item)
+        if note is None:
+            return
+
+        rendered_output_path = self._saved_notes.rendered_output_path(note)
+        if rendered_output_path is None or not rendered_output_path.exists():
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "No generated notes are linked to this saved note yet.",
+            )
+            return
+
+        self.open_local_path(rendered_output_path)
+
+    def load_saved_note(self, note: SavedNote) -> None:
+        try:
+            note_text = self._saved_notes.load(note)
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                f"Could not open saved note:\n{note.path}\n\n{error}",
+            )
+            self.refresh_saved_notes_list()
+            return
+
+        self._workflow.clear_active_state()
+        self.show_home_page()
+        self._enter_editor_view(note_text)
 
     def handle_clear_text(self) -> None:
         if self._busy:
@@ -727,30 +910,57 @@ class MainWindow(QWidget):
         self._workflow.clear_active_state()
         self.update_view_state()
 
-    def handle_delete_all_jobs(self) -> None:
+    def handle_delete_all_history(self) -> None:
         if self._busy:
             return
 
+        history_path = self._workflow.jobs_workspace_path
         result = QMessageBox.question(
             self,
             APP_NAME,
-            f"Delete saved files in:\n{self._workflow.jobs_workspace_path}\n\n"
-            "This will remove generated notes and saved text from previous runs.",
+            f"Delete all history in:\n{history_path}\n\n"
+            "This will remove generated notes output and run metadata.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
         if result != QMessageBox.Yes:
             return
 
-        self._run_task(self._workflow.delete_all_jobs, self._after_jobs_deleted)
+        self._run_task(self._workflow.delete_all_jobs, self._after_history_deleted)
 
-    def _after_jobs_deleted(self, result: "DeleteJobsResult") -> None:
+    def handle_delete_all_saved_notes(self) -> None:
+        if self._busy:
+            return
+
+        saved_notes_path = self._saved_notes.get_notes_path()
+        result = QMessageBox.question(
+            self,
+            APP_NAME,
+            f"Delete all saved notes in:\n{saved_notes_path}\n\n"
+            "This will remove editable saved note files only.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if result != QMessageBox.Yes:
+            return
+
+        self._run_task(self._saved_notes.delete_all, self._after_saved_notes_deleted)
+
+    def _after_history_deleted(self, result: "DeleteJobsResult") -> None:
         self._workflow.apply_session(result.session)
         self.sync_saved_notes_actions()
         QMessageBox.information(
             self,
             APP_NAME,
-            f"Deleted {result.deleted_count} saved folder(s).",
+            f"Deleted {result.deleted_count} history folder(s).",
+        )
+
+    def _after_saved_notes_deleted(self, deleted_count: int) -> None:
+        self.refresh_saved_notes_list()
+        QMessageBox.information(
+            self,
+            APP_NAME,
+            f"Deleted {deleted_count} saved note(s).",
         )
 
 

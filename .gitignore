@@ -21,6 +21,8 @@ Thumbs.db
 # Workspace (runtime data - IMPORTANT)
 workspace/
 madschinese_workspace/
+history/
+saved_notes/
 
 # Temp files
 *.tmp
