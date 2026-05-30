@@ -221,7 +221,7 @@ def theme_stylesheet(theme: Theme) -> str:
                 min-height: 24px;
             }}
 
-            QComboBox#modeCombo, QComboBox#themeCombo {{
+            QComboBox#modeCombo, QComboBox#themeCombo, QComboBox#highlightColorCombo {{
                 background-color: {surface_lift};
                 border-color: {secondary_border};
                 padding-left: 14px;

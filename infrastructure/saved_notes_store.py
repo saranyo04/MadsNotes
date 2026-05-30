@@ -7,6 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.note_highlights import (
+    HighlightSpan,
+    highlight_spans_from_value,
+    highlight_spans_to_dicts,
+)
 from infrastructure.config import get_saved_notes_path
 
 
@@ -55,28 +60,44 @@ class SavedNotesStore:
         note_name: str = "",
         *,
         rendered_output_path: Path | None = None,
+        highlights: list[HighlightSpan] | None = None,
     ) -> SavedNote:
         notes_path = self.get_notes_path()
         title = self._note_title(note_name)
         path = self._available_note_path(notes_path, title)
         path.write_text(text, encoding="utf-8")
+        metadata: dict[str, Any] = {}
         if rendered_output_path is not None:
-            self._write_note_metadata(path, {"rendered_output_path": str(rendered_output_path)})
+            metadata["rendered_output_path"] = str(rendered_output_path)
+        if highlights:
+            metadata["highlights"] = highlight_spans_to_dicts(highlights)
+        if metadata:
+            self._write_note_metadata(path, metadata)
         modified_at = datetime.fromtimestamp(path.stat().st_mtime)
         return SavedNote(path=path, title=path.stem, modified_at=modified_at)
 
+    def highlights(self, note: SavedNote | Path) -> list[HighlightSpan]:
+        metadata = self._read_note_metadata(note)
+        return highlight_spans_from_value(metadata.get("highlights"))
+
     def rendered_output_path(self, note: SavedNote | Path) -> Path | None:
-        note_path = note.path if isinstance(note, SavedNote) else note
-        metadata_path = note_path.with_suffix(".json")
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
+        metadata = self._read_note_metadata(note)
 
         rendered_output_path = metadata.get("rendered_output_path")
         if not isinstance(rendered_output_path, str) or not rendered_output_path.strip():
             return None
         return Path(rendered_output_path)
+
+    def _read_note_metadata(self, note: SavedNote | Path) -> dict[str, Any]:
+        note_path = note.path if isinstance(note, SavedNote) else note
+        metadata_path = note_path.with_suffix(".json")
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        if not isinstance(metadata, dict):
+            return {}
+        return metadata
 
     def _write_note_metadata(self, note_path: Path, metadata: dict[str, Any]) -> None:
         note_path.with_suffix(".json").write_text(

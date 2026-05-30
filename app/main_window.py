@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.editor_highlights import EditorHighlightController
 from app.settings_window import SettingsPage
 from app.shortcuts import install_shortcuts
 from app.theme_system import (
@@ -37,6 +38,7 @@ from app.theme_system import (
     theme_stylesheet,
 )
 from app.ui_config import APP_NAME, PDF_FILE_FILTER
+from core.note_highlights import HIGHLIGHT_COLOR_OPTIONS, HighlightSpan
 from infrastructure.saved_notes_store import SavedNote, SavedNotesStore
 
 if TYPE_CHECKING:
@@ -61,6 +63,8 @@ class MainWindow(QWidget):
         self.view_mode = "input"
         self._themes = load_themes()
         self._saved_notes = SavedNotesStore()
+        self._cached_editor_highlights: list[HighlightSpan] = []
+        self._cached_editor_highlight_text = ""
 
         self.setAcceptDrops(True)
         self._theme = get_theme(DEFAULT_THEME_NAME)
@@ -143,6 +147,7 @@ class MainWindow(QWidget):
         self.text_input.installEventFilter(self)
         self.text_input.setPlaceholderText(self._input_placeholder_text())
         self.text_input.textChanged.connect(self.update_empty_state)
+        self._highlight_controller = EditorHighlightController(self.text_input)
         self.empty_state = self._build_empty_state()
 
         self.render_button = QPushButton("Generate Notes")
@@ -174,6 +179,24 @@ class MainWindow(QWidget):
         self.open_saved_notes_button.setIcon(self._icon("files"))
         self.open_saved_notes_button.setIconSize(QSize(18, 18))
         self.open_saved_notes_button.clicked.connect(self.handle_open_saved_notes_folder)
+
+        self.highlight_color_combo = QComboBox()
+        self.highlight_color_combo.setObjectName("highlightColorCombo")
+        for color_key, label, _hex_value in HIGHLIGHT_COLOR_OPTIONS:
+            self.highlight_color_combo.addItem(label, color_key)
+            self.highlight_color_combo.setItemData(
+                self.highlight_color_combo.count() - 1,
+                QColor(_hex_value),
+                Qt.DecorationRole,
+            )
+
+        self.highlight_button = QPushButton("Highlight")
+        self.highlight_button.setObjectName("secondaryAction")
+        self.highlight_button.clicked.connect(self.handle_highlight_selection)
+
+        self.remove_highlight_button = QPushButton("Remove Highlight")
+        self.remove_highlight_button.setObjectName("secondaryAction")
+        self.remove_highlight_button.clicked.connect(self.handle_remove_highlight)
 
         app_title = QLabel(APP_NAME)
         app_title.setObjectName("appTitle")
@@ -226,6 +249,9 @@ class MainWindow(QWidget):
         content_title_row.addWidget(content_title)
         content_title_row.addWidget(content_hint)
         content_title_row.addStretch()
+        content_title_row.addWidget(self.highlight_color_combo)
+        content_title_row.addWidget(self.highlight_button)
+        content_title_row.addWidget(self.remove_highlight_button)
         home_page_layout.addLayout(content_title_row)
         editor_card = QFrame()
         editor_card.setObjectName("editorCard")
@@ -421,6 +447,7 @@ class MainWindow(QWidget):
         else:
             self.sync_saved_notes_actions()
         self.mode_combo.setEnabled(not busy and self.view_mode != "editor")
+        self._sync_highlight_actions()
 
     def _run_task(self, fn, on_success) -> None:
         if self._busy:
@@ -457,6 +484,7 @@ class MainWindow(QWidget):
         self._refresh_widget_style(self.view_label)
         self._refresh_widget_style(self.editor_view_label)
         self.mode_combo.setEnabled(not in_editor and not self._busy)
+        self._sync_highlight_actions()
 
         if in_editor:
             self.text_input.setPlaceholderText(
@@ -470,6 +498,13 @@ class MainWindow(QWidget):
         self.open_last_saved_button.setEnabled(not self._busy)
         self.open_saved_notes_button.setEnabled(not self._busy)
         self.save_note_button.setEnabled(not self._busy)
+        self._sync_highlight_actions()
+
+    def _sync_highlight_actions(self) -> None:
+        enabled = not self._busy and self.view_mode == "editor"
+        self.highlight_color_combo.setEnabled(enabled)
+        self.highlight_button.setEnabled(enabled)
+        self.remove_highlight_button.setEnabled(enabled)
 
     def refresh_saved_notes_list(self) -> None:
         self.saved_notes_list.clear()
@@ -528,16 +563,24 @@ class MainWindow(QWidget):
     def _set_input_view_text(self, text: str) -> None:
         self.view_mode = "input"
         self.text_input.setPlainText(text)
+        self._highlight_controller.clear()
         self.update_view_state()
 
-    def _enter_editor_view(self, editor_text: str) -> None:
+    def _enter_editor_view(
+        self,
+        editor_text: str,
+        highlights: list[HighlightSpan] | None = None,
+    ) -> None:
         self.view_mode = "editor"
         self.text_input.setPlainText(editor_text)
+        self._highlight_controller.set_highlights(highlights or [])
         self.update_view_state()
 
     def _return_to_input_view(self) -> None:
+        self._cache_editor_highlights()
         self.view_mode = "input"
         self.text_input.setPlainText(self._current_source_text())
+        self._highlight_controller.clear()
         self.update_view_state()
 
     def handle_select_input_view(self) -> None:
@@ -548,7 +591,43 @@ class MainWindow(QWidget):
     def handle_select_editor_view(self) -> None:
         if self._busy or self.view_mode == "editor":
             return
+        if (
+            self._cached_editor_highlights
+            and self._cached_editor_highlight_text
+            and self._text_content() == self._current_source_text()
+            and self._workflow.session.current_document is not None
+        ):
+            editor_text = self._cached_editor_highlight_text
+            self._enter_editor_view(editor_text, self._cached_editor_highlights)
+            return
         self.handle_open_editor()
+
+    def handle_highlight_selection(self) -> None:
+        if self._busy or self.view_mode != "editor":
+            return
+        color = self.highlight_color_combo.currentData() or "yellow"
+        if not self._highlight_controller.apply_to_selection(color):
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "Select text in the editor first.",
+            )
+
+    def handle_remove_highlight(self) -> None:
+        if self._busy or self.view_mode != "editor":
+            return
+        if not self._highlight_controller.remove_from_selection():
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "Select highlighted text in the editor first.",
+            )
+
+    def _cache_editor_highlights(self) -> None:
+        if self.view_mode != "editor":
+            return
+        self._cached_editor_highlight_text = self._text_content()
+        self._cached_editor_highlights = self._highlight_controller.highlights()
 
     def _pdf_path_from_mime_data(self, mime_data) -> str | None:
         if not mime_data or not mime_data.hasUrls():
@@ -832,6 +911,9 @@ class MainWindow(QWidget):
             text,
             note_name,
             rendered_output_path=self._current_rendered_output_path(),
+            highlights=self._highlight_controller.highlights()
+            if self.view_mode == "editor"
+            else [],
         )
         self.refresh_saved_notes_list()
         QMessageBox.information(
@@ -899,7 +981,7 @@ class MainWindow(QWidget):
 
         self._workflow.clear_active_state()
         self.show_home_page()
-        self._enter_editor_view(note_text)
+        self._enter_editor_view(note_text, self._saved_notes.highlights(note))
 
     def handle_clear_text(self) -> None:
         if self._busy:
