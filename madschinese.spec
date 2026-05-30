@@ -4,7 +4,10 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('app/themes/*.json', 'app/themes'),
+        ('app/icons/*.svg', 'app/icons'),
+    ],
     hiddenimports=['fitz'],
     hookspath=[],
     hooksconfig={},
