@@ -6,6 +6,9 @@ from core.models import Document, InlineText, ensure_document
 from core.workflow_models import RenderArtifact
 from infrastructure.config import APP_NAME
 
+_DEFAULT_FONT_FAMILY = "Microsoft YaHei, PingFang SC, sans-serif"
+_SAFE_CSS_VALUE_CHARS = frozenset(" #%,.-_")
+
 
 def _is_cjk(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
@@ -21,11 +24,34 @@ def _inline_html(inline_text: InlineText | None) -> str:
     return _html_text(inline_text.text)
 
 
+def _css_value(value: object, default: str) -> str:
+    text = str(value).strip()
+    if text and all(char.isalnum() or char in _SAFE_CSS_VALUE_CHARS for char in text):
+        return text
+    return default
+
+
 class HtmlRenderer:
     def render(self, document: Document) -> RenderArtifact:
         document = ensure_document(document)
         meta = document.meta
-        font_family = meta.get("font_family", "Microsoft YaHei, PingFang SC, sans-serif")
+        font_family = _css_value(
+            meta.get("font_family", _DEFAULT_FONT_FAMILY),
+            _DEFAULT_FONT_FAMILY,
+        )
+        padding = _css_value(meta.get("padding", "20px"), "20px")
+        line_height = _css_value(meta.get("line_height", "1.9"), "1.9")
+        font_size = _css_value(meta.get("font_size", "18px"), "18px")
+        background = _css_value(meta.get("background", "#fff"), "#fff")
+        color = _css_value(meta.get("color", "#111"), "#111")
+        paragraph_margin_bottom = _css_value(
+            meta.get("paragraph_margin_bottom", "1em"),
+            "1em",
+        )
+        paragraph_text_indent = _css_value(
+            meta.get("paragraph_text_indent", "2em"),
+            "2em",
+        )
 
         body_parts: list[str] = []
         has_tokens = False
@@ -60,13 +86,13 @@ class HtmlRenderer:
     <style>
         body {{
             font-family: {font_family};
-            padding: {meta.get("padding", "20px")};
-            line-height: {meta.get("line_height", "1.9")};
-            font-size: {meta.get("font_size", "18px")};
+            padding: {padding};
+            line-height: {line_height};
+            font-size: {font_size};
             max-width: 100%;
             margin: 0;
-            background: {meta.get("background", "#fff")};
-            color: {meta.get("color", "#111")};
+            background: {background};
+            color: {color};
         }}
 
         h2 {{
@@ -75,11 +101,11 @@ class HtmlRenderer:
         }}
 
         p {{
-            margin: 0 0 {meta.get("paragraph_margin_bottom", "1em")} 0;
+            margin: 0 0 {paragraph_margin_bottom} 0;
         }}
 
         p.cjk {{
-            text-indent: {meta.get("paragraph_text_indent", "2em")};
+            text-indent: {paragraph_text_indent};
         }}
 
         p.latin {{

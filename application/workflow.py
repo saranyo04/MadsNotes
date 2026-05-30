@@ -443,7 +443,7 @@ class WorkflowService:
                     "used_editor": used_editor,
                 },
             )
-        next_session = session.with_render(artifact, stored_output)
+        next_session = session.with_render(stored_output)
         return RenderResult(
             source=source,
             document=document,

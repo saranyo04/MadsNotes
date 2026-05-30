@@ -44,7 +44,6 @@ class StoredOutput:
 class WorkflowSession:
     source: SourceText | None = None
     current_document: Document | None = None
-    last_render: RenderArtifact | None = None
     last_output: StoredOutput | None = None
     last_structuring_mode: str | None = None
 
@@ -58,15 +57,11 @@ class WorkflowSession:
             last_structuring_mode=mode if mode is not None else self.last_structuring_mode,
         )
 
-    def with_render(
-        self,
-        render_artifact: RenderArtifact,
-        stored_output: StoredOutput | None,
-    ) -> "WorkflowSession":
-        return replace(self, last_render=None, last_output=stored_output)
+    def with_render(self, stored_output: StoredOutput | None) -> "WorkflowSession":
+        return replace(self, last_output=stored_output)
 
     def cleared_output(self) -> "WorkflowSession":
-        return replace(self, last_render=None, last_output=None)
+        return replace(self, last_output=None)
 
     def cleared_active_state(self) -> "WorkflowSession":
         return replace(self, source=None, current_document=None)
