@@ -8,23 +8,27 @@ from PySide6.QtCore import QEvent, QSize, QTimer, Qt
 from PySide6.QtGui import QAction, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMenu,
     QMessageBox,
     QPushButton,
     QGraphicsDropShadowEffect,
     QPlainTextEdit,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from app.settings_window import SettingsWindow
 from app.shortcuts import install_shortcuts
+from app.theme_system import (
+    DEFAULT_THEME_NAME,
+    get_theme,
+    load_themes,
+    theme_stylesheet,
+)
 from app.ui_config import APP_NAME, PDF_FILE_FILTER
 
 if TYPE_CHECKING:
@@ -47,256 +51,12 @@ class MainWindow(QWidget):
         self._task_runner = task_runner
         self._busy = False
         self.view_mode = "input"
+        self._themes = load_themes()
+        self._settings_window: SettingsWindow | None = None
 
         self.setAcceptDrops(True)
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #FFFDF9;
-                color: #4A4A48;
-                font-family: "Segoe UI";
-                font-size: 14px;
-            }
-
-            QLabel {
-                background-color: transparent;
-            }
-
-            QPlainTextEdit {
-                background-color: #FFFCF7;
-                color: #4A4A48;
-                border: 1px dashed #F4B7BF;
-                border-radius: 16px;
-                padding: 22px;
-                selection-background-color: #F6C1C8;
-                selection-color: #4A4A48;
-            }
-
-            QPushButton, QComboBox, QToolButton {
-                background-color: #FFF9F4;
-                color: #4A4A48;
-                border: 1px solid transparent;
-                border-radius: 12px;
-                padding: 11px 14px;
-            }
-
-            QPushButton:hover, QComboBox:hover, QToolButton:hover {
-                background-color: #FFF1F3;
-                border-color: #F6C1C8;
-            }
-
-            QPushButton:disabled, QComboBox:disabled, QToolButton:disabled {
-                color: #9E9E9E;
-                background-color: #F7F2EC;
-                border-color: #E8DED5;
-            }
-
-            QComboBox {
-                min-width: 150px;
-                min-height: 24px;
-            }
-
-            QComboBox#modeCombo {
-                background-color: #FFFDF9;
-                border-color: #DDECD6;
-                padding-left: 14px;
-            }
-
-            QToolButton#settingsButton {
-                background-color: #D7E8CD;
-                border-color: transparent;
-                color: #3E4D38;
-                padding: 12px 18px;
-                font-weight: 600;
-            }
-
-            QMenu {
-                background-color: #FFF9F4;
-                color: #4A4A48;
-                border: 1px solid #DDECD6;
-                border-radius: 12px;
-                padding: 10px;
-            }
-
-            QMenu::item {
-                padding: 8px 28px 8px 12px;
-                border-radius: 6px;
-            }
-
-            QMenu::item:selected {
-                background-color: #FCECEF;
-            }
-
-            QCheckBox {
-                spacing: 10px;
-                background-color: transparent;
-            }
-
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 1px solid #B7D7A8;
-                border-radius: 5px;
-                background-color: #FFFDF9;
-            }
-
-            QCheckBox::indicator:checked {
-                background-color: #B7D7A8;
-                border-color: #9FCA8D;
-            }
-
-            QFrame#topBar,
-            QFrame#leftNav,
-            QFrame#rightUtility,
-            QFrame#bottomActions {
-                background-color: #FFF9F4;
-                border: 1px solid transparent;
-                border-radius: 18px;
-            }
-
-            QFrame#mainContent {
-                background-color: #FFF9F4;
-                border: 1px solid transparent;
-                border-radius: 18px;
-            }
-
-            QFrame#editorCard {
-                background-color: #FFFCF8;
-                border: 1px solid #F7D5DA;
-                border-radius: 18px;
-            }
-
-            QFrame#viewSegment {
-                background-color: #FFFDF9;
-                border: 1px solid #E7E1D1;
-                border-radius: 12px;
-            }
-
-            QFrame#utilityGroup {
-                background-color: #FFFCF8;
-                border: 1px solid transparent;
-                border-radius: 14px;
-            }
-
-            QLabel#appTitle {
-                color: #2F3430;
-                font-size: 18px;
-                font-weight: 700;
-            }
-
-            QLabel#sectionTitle {
-                color: #2F3430;
-                font-size: 18px;
-                font-weight: 700;
-                background-color: transparent;
-            }
-
-            QLabel#panelHint {
-                color: #8A887D;
-                font-size: 12px;
-                background-color: transparent;
-            }
-
-            QLabel#fieldLabel {
-                color: #6D6D6D;
-                background-color: transparent;
-            }
-
-            QLabel#segmentPill {
-                background-color: transparent;
-                color: #6D6D6D;
-                border: 1px solid transparent;
-                border-radius: 10px;
-                padding: 9px 16px;
-            }
-
-            QLabel#segmentPill[active="true"] {
-                background-color: #FFF1F3;
-                color: #C54E61;
-                border: 1px solid #F6C1C8;
-            }
-
-            QFrame#emptyState {
-                background-color: transparent;
-                border: none;
-            }
-
-            QLabel#emptyStateHeading {
-                color: #3D3F3B;
-                font-size: 26px;
-                font-weight: 700;
-            }
-
-            QLabel#emptyStateText {
-                color: #7D7A70;
-                font-size: 15px;
-            }
-
-            QLabel#emptyStateArt {
-                color: #C54E61;
-                font-size: 15px;
-                font-weight: 700;
-            }
-
-            QLabel#emptyStateIcon {
-                background-color: #FFF1F3;
-                border: 1px solid #F7D5DA;
-                border-radius: 20px;
-                padding: 18px;
-            }
-
-            QPushButton#navButton {
-                text-align: left;
-                background-color: #FFF9F4;
-                border: 1px solid transparent;
-                border-radius: 14px;
-                padding: 13px 16px;
-                color: #53604C;
-            }
-
-            QPushButton#navButton:hover,
-            QPushButton#navButton[active="true"] {
-                background-color: #FBE3E8;
-                border-color: transparent;
-                color: #3D3F3B;
-            }
-
-            QPushButton#primaryAction {
-                background-color: #FFF0F2;
-                color: #D2475C;
-                border-color: #F2AEB8;
-                padding: 15px 18px;
-                font-size: 16px;
-                font-weight: 700;
-            }
-
-            QPushButton#primaryAction:hover {
-                background-color: #FFE5EA;
-                border-color: #EA9AA8;
-            }
-
-            QPushButton#secondaryAction {
-                background-color: #F7FBF2;
-                border-color: transparent;
-                color: #4F6A42;
-                padding: 14px 16px;
-                font-weight: 600;
-            }
-
-            QPushButton#secondaryAction:hover {
-                background-color: #F4FAEF;
-                border-color: #B7D7A8;
-            }
-
-            QPushButton#utilityDanger {
-                background-color: #FFF4F2;
-                border-color: #E9C5BD;
-                color: #9D4F42;
-                padding: 13px 14px;
-            }
-        """
-        )
-
+        self._theme = get_theme(DEFAULT_THEME_NAME)
+        self.setStyleSheet(theme_stylesheet(self._theme))
         self.setWindowTitle(APP_NAME)
         self.resize(1260, 760)
 
@@ -350,40 +110,18 @@ class MainWindow(QWidget):
         if default_index >= 0:
             self.mode_combo.setCurrentIndex(default_index)
 
-        self.settings_button = QToolButton()
-        self.settings_button.setObjectName("settingsButton")
-        self.settings_button.setText("Settings")
-        self.settings_button.setIcon(self._icon("settings"))
-        self.settings_button.setIconSize(QSize(18, 18))
-        self.settings_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.settings_button.setPopupMode(QToolButton.InstantPopup)
-
-        self.settings_menu = QMenu(self)
         self.open_editor_before_render_action = QAction(
             "Open editor before generating notes",
             self,
             checkable=True,
         )
-        self.open_last_output_action = QAction("Open last notes", self)
-        self.open_last_output_action.triggered.connect(self.handle_open_last_output)
-        self.open_job_folder_action = QAction("Open saved files", self)
-        self.open_job_folder_action.triggered.connect(self.handle_open_job_folder)
-        self.delete_all_jobs_action = QAction("Delete saved files", self)
-        self.delete_all_jobs_action.triggered.connect(self.handle_delete_all_jobs)
 
-        self.settings_menu.addAction(self.open_editor_before_render_action)
-        self.settings_menu.addSeparator()
-        self.settings_menu.addAction(self.open_last_output_action)
-        self.settings_menu.addAction(self.open_job_folder_action)
-        self.settings_menu.addSeparator()
-        self.settings_menu.addAction(self.delete_all_jobs_action)
-        self.settings_menu.aboutToShow.connect(self.sync_quick_settings_menu)
-        self.settings_button.setMenu(self.settings_menu)
-
-        self.view_label = QLabel("Input")
+        self.view_label = QPushButton("Input")
         self.view_label.setObjectName("segmentPill")
-        self.editor_view_label = QLabel("Editor")
+        self.view_label.clicked.connect(self.handle_select_input_view)
+        self.editor_view_label = QPushButton("Editor")
         self.editor_view_label.setObjectName("segmentPill")
+        self.editor_view_label.clicked.connect(self.handle_select_editor_view)
         view_segment = QFrame()
         view_segment.setObjectName("viewSegment")
         view_segment_layout = QHBoxLayout()
@@ -405,27 +143,11 @@ class MainWindow(QWidget):
         self.render_button.setIconSize(QSize(20, 20))
         self.render_button.clicked.connect(self.handle_generate_html)
 
-        self.open_editor_button = QPushButton("Edit Text")
-        self.open_editor_button.setObjectName("secondaryAction")
-        self.open_editor_button.setIcon(self._icon("edit-text"))
-        self.open_editor_button.setIconSize(QSize(20, 20))
-        self.open_editor_button.clicked.connect(self.handle_open_editor)
-
-        self.upload_button = QPushButton("Open PDF")
+        self.upload_button = QPushButton("Upload PDF")
         self.upload_button.setObjectName("secondaryAction")
         self.upload_button.setIcon(self._icon("open-pdf"))
         self.upload_button.setIconSize(QSize(20, 20))
         self.upload_button.clicked.connect(self.handle_pdf_upload)
-
-        self.open_editor_before_render_checkbox = QCheckBox(
-            "Open editor before generating notes"
-        )
-        self.open_editor_before_render_checkbox.toggled.connect(
-            self.open_editor_before_render_action.setChecked
-        )
-        self.open_editor_before_render_action.toggled.connect(
-            self.open_editor_before_render_checkbox.setChecked
-        )
 
         self.open_last_output_button = QPushButton("Open last notes")
         self.open_last_output_button.setObjectName("secondaryAction")
@@ -438,12 +160,6 @@ class MainWindow(QWidget):
         self.open_job_folder_button.setIcon(self._icon("files"))
         self.open_job_folder_button.setIconSize(QSize(18, 18))
         self.open_job_folder_button.clicked.connect(self.handle_open_job_folder)
-
-        self.delete_all_jobs_button = QPushButton("Delete saved files")
-        self.delete_all_jobs_button.setObjectName("utilityDanger")
-        self.delete_all_jobs_button.setIcon(self._icon("cleanup"))
-        self.delete_all_jobs_button.setIconSize(QSize(18, 18))
-        self.delete_all_jobs_button.clicked.connect(self.handle_delete_all_jobs)
 
         app_title = QLabel(APP_NAME)
         app_title.setObjectName("appTitle")
@@ -458,22 +174,23 @@ class MainWindow(QWidget):
         top_bar.addWidget(view_text_label)
         top_bar.addWidget(view_segment)
         top_bar.addStretch()
-        top_bar.addWidget(self.settings_button)
         top_bar_frame.setLayout(top_bar)
 
         nav_icons = {
             "Home": "home",
-            "Editor": "editor",
             "History": "history",
             "Files": "files",
             "Settings": "settings",
         }
-        for index, entry in enumerate(("Home", "Editor", "History", "Files", "Settings")):
+        for index, entry in enumerate(("Home", "History", "Files", "Settings")):
             nav_button = QPushButton(entry)
             nav_button.setObjectName("navButton")
             nav_button.setProperty("active", index == 0)
             nav_button.setIcon(self._icon(nav_icons[entry]))
             nav_button.setIconSize(QSize(20, 20))
+            if entry == "Settings":
+                self.settings_nav_button = nav_button
+                nav_button.clicked.connect(self.handle_open_settings)
             left_nav.addWidget(nav_button)
         left_nav.addStretch()
         left_nav_frame.setLayout(left_nav)
@@ -498,60 +215,33 @@ class MainWindow(QWidget):
         main_content.addWidget(editor_card, 1)
         main_content_frame.setLayout(main_content)
 
-        utility_title = QLabel("Settings")
+        utility_title = QLabel("Saved Notes")
         utility_title.setObjectName("sectionTitle")
         right_utility.addWidget(utility_title)
-
-        start_group = QFrame()
-        start_group.setObjectName("utilityGroup")
-        start_group_layout = QVBoxLayout()
-        start_group_layout.setContentsMargins(16, 16, 16, 16)
-        start_group_layout.setSpacing(12)
-        start_group_label = QLabel("Before generating")
-        start_group_label.setObjectName("panelHint")
-        start_group_layout.addWidget(start_group_label)
-        start_group_layout.addWidget(self.open_editor_before_render_checkbox)
-        start_group.setLayout(start_group_layout)
 
         files_group = QFrame()
         files_group.setObjectName("utilityGroup")
         files_group_layout = QVBoxLayout()
         files_group_layout.setContentsMargins(16, 16, 16, 16)
         files_group_layout.setSpacing(12)
-        files_group_label = QLabel("Saved notes")
+        files_group_label = QLabel("Open your latest generated notes or saved files.")
         files_group_label.setObjectName("panelHint")
         files_group_layout.addWidget(files_group_label)
         files_group_layout.addWidget(self.open_last_output_button)
         files_group_layout.addWidget(self.open_job_folder_button)
         files_group.setLayout(files_group_layout)
 
-        danger_group = QFrame()
-        danger_group.setObjectName("utilityGroup")
-        danger_group_layout = QVBoxLayout()
-        danger_group_layout.setContentsMargins(16, 16, 16, 16)
-        danger_group_layout.setSpacing(12)
-        danger_group_label = QLabel("Cleanup")
-        danger_group_label.setObjectName("panelHint")
-        danger_group_layout.addWidget(danger_group_label)
-        danger_group_layout.addWidget(self.delete_all_jobs_button)
-        danger_group.setLayout(danger_group_layout)
-
-        right_utility.addWidget(start_group)
         right_utility.addWidget(files_group)
-        right_utility.addWidget(danger_group)
         right_utility.addStretch()
         right_utility_frame.setLayout(right_utility)
-        self._add_soft_shadow(start_group, blur_radius=14, y_offset=2, alpha=8)
         self._add_soft_shadow(files_group, blur_radius=14, y_offset=2, alpha=8)
-        self._add_soft_shadow(danger_group, blur_radius=14, y_offset=2, alpha=8)
 
         middle_layout.addWidget(left_nav_frame)
         middle_layout.addWidget(main_content_frame, 1)
         middle_layout.addWidget(right_utility_frame)
 
-        button_row.addWidget(self.render_button, 1)
-        button_row.addWidget(self.open_editor_button, 1)
         button_row.addWidget(self.upload_button, 1)
+        button_row.addWidget(self.render_button, 1)
         bottom_actions_frame.setLayout(button_row)
 
         main_layout.addWidget(top_bar_frame)
@@ -566,7 +256,7 @@ class MainWindow(QWidget):
         self._add_soft_shadow(right_utility_frame, blur_radius=18, y_offset=3, alpha=12)
         self._add_soft_shadow(bottom_actions_frame, blur_radius=18, y_offset=3, alpha=10)
         self.update_view_state()
-        self.sync_quick_settings_menu()
+        self.sync_saved_notes_actions()
         install_shortcuts(self)
 
         if initial_file_path:
@@ -577,6 +267,31 @@ class MainWindow(QWidget):
 
     def _icon(self, name: str) -> QIcon:
         return QIcon(str(Path(__file__).with_name("icons") / f"{name}.svg"))
+
+    def handle_theme_changed(self, theme_name: str) -> None:
+        self._theme = self._themes.get(theme_name) or get_theme()
+        self.setStyleSheet(theme_stylesheet(self._theme))
+        if self._settings_window is not None:
+            self._settings_window.setStyleSheet(self.styleSheet())
+            self._settings_window.set_current_theme(self._theme.name)
+        self.update_view_state()
+
+    def handle_open_settings(self) -> None:
+        if self._settings_window is None:
+            self._settings_window = SettingsWindow(
+                themes=self._themes,
+                current_theme_name=self._theme.name,
+                open_editor_before_render_action=self.open_editor_before_render_action,
+                on_theme_changed=self.handle_theme_changed,
+                on_delete_saved_files=self.handle_delete_all_jobs,
+                parent=self,
+            )
+            self._settings_window.setStyleSheet(self.styleSheet())
+            self._settings_window.set_busy(self._busy)
+
+        self._settings_window.show()
+        self._settings_window.raise_()
+        self._settings_window.activateWindow()
 
     def _refresh_widget_style(self, widget: QWidget) -> None:
         widget.style().unpolish(widget)
@@ -657,16 +372,16 @@ class MainWindow(QWidget):
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         self.render_button.setEnabled(not busy)
-        self.open_editor_button.setEnabled(not busy)
         self.upload_button.setEnabled(not busy)
-        self.settings_button.setEnabled(not busy)
-        self.open_editor_before_render_checkbox.setEnabled(not busy)
-        self.delete_all_jobs_button.setEnabled(not busy)
+        self.view_label.setEnabled(not busy)
+        self.editor_view_label.setEnabled(not busy)
+        if self._settings_window is not None:
+            self._settings_window.set_busy(busy)
         if busy:
             self.open_last_output_button.setEnabled(False)
             self.open_job_folder_button.setEnabled(False)
         else:
-            self.sync_quick_settings_menu()
+            self.sync_saved_notes_actions()
         self.mode_combo.setEnabled(not busy and self.view_mode != "editor")
 
     def _run_task(self, fn, on_success) -> None:
@@ -715,7 +430,6 @@ class MainWindow(QWidget):
         self.editor_view_label.setProperty("active", in_editor)
         self._refresh_widget_style(self.view_label)
         self._refresh_widget_style(self.editor_view_label)
-        self.open_editor_button.setText("Back to Input" if in_editor else "Edit Text")
         self.mode_combo.setEnabled(not in_editor and not self._busy)
 
         if in_editor:
@@ -726,13 +440,11 @@ class MainWindow(QWidget):
             self.text_input.setPlaceholderText(self._input_placeholder_text())
         self.update_empty_state()
 
-    def sync_quick_settings_menu(self) -> None:
+    def sync_saved_notes_actions(self) -> None:
         output_path = self._last_output_path()
         job_path = self._last_job_path()
         has_output = bool(output_path and output_path.exists())
         has_job_folder = bool(job_path and job_path.exists())
-        self.open_last_output_action.setEnabled(has_output)
-        self.open_job_folder_action.setEnabled(has_job_folder)
         self.open_last_output_button.setEnabled(has_output and not self._busy)
         self.open_job_folder_button.setEnabled(has_job_folder and not self._busy)
 
@@ -756,6 +468,16 @@ class MainWindow(QWidget):
         self.view_mode = "input"
         self.text_input.setPlainText(self._current_source_text())
         self.update_view_state()
+
+    def handle_select_input_view(self) -> None:
+        if self._busy or self.view_mode != "editor":
+            return
+        self._return_to_input_view()
+
+    def handle_select_editor_view(self) -> None:
+        if self._busy or self.view_mode == "editor":
+            return
+        self.handle_open_editor()
 
     def _pdf_path_from_mime_data(self, mime_data) -> str | None:
         if not mime_data or not mime_data.hasUrls():
@@ -926,7 +648,7 @@ class MainWindow(QWidget):
         self._workflow.apply_session(result.session)
         if result.stored_output is None:
             raise RuntimeError("Render did not produce a stored output")
-        self.sync_quick_settings_menu()
+        self.sync_saved_notes_actions()
         self.open_local_path(result.stored_output.output_path)
 
     def handle_generate_html(self) -> None:
@@ -1024,7 +746,7 @@ class MainWindow(QWidget):
 
     def _after_jobs_deleted(self, result: "DeleteJobsResult") -> None:
         self._workflow.apply_session(result.session)
-        self.sync_quick_settings_menu()
+        self.sync_saved_notes_actions()
         QMessageBox.information(
             self,
             APP_NAME,
