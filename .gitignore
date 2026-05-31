@@ -1,63 +1,56 @@
-
+# Virtual environments
 venv/
-.env/
+.venv/
+.env
 
 # Python cache
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# VS Code
+# IDE
 .vscode/
+.idea/
 
-# OS junk
+# OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Logs
 *.log
 
-# Workspace (runtime data - IMPORTANT)
+# Runtime data
 workspace/
-madschinese_workspace/
+madsnotes_workspace/
 history/
 saved_notes/
 
-# Temp files
+# User-created themes
+user_themes/*.json
+
+# Temp
 *.tmp
 *.temp
+*.bak
+*.swp
 
-# Build / dist
+# Build output
 build/
 dist/
+*.egg
 *.egg-info/
+*.whl
+pip-wheel-metadata/
 
-
-# Environment variables / secrets
-.env
-
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
 
 # PyInstaller extras
 *.spec.backup
 *.manifest
 *.exe.manifest
-
-# Packaging
-*.whl
-pip-wheel-metadata/
-
-# Recursive cache
-**/__pycache__/
-
-# Testing / coverage
-.coverage
-htmlcov/
-.pytest_cache/
-
-# IDE
-.idea/
-
-# Misc
-*.bak
-*.swp
