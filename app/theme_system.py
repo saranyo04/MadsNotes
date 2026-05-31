@@ -469,6 +469,8 @@ def theme_stylesheet(theme: Theme) -> str:
                 background-color: {danger_bg};
                 border-color: {mix("#F2B9B0", surface, 0.35)};
                 color: {danger_text};
-                padding: 13px 14px;
+                padding: 10px 14px;
+                min-height: 22px;
+                font-weight: 600;
             }}
         """

@@ -5,8 +5,10 @@ from collections.abc import Callable
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -49,19 +51,18 @@ class SettingsPage(QWidget):
         if theme_index >= 0:
             self.theme_combo.setCurrentIndex(theme_index)
         self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
-        self.current_theme_label = QLabel()
-        self.current_theme_label.setObjectName("panelHint")
         theme_group.layout().addWidget(self.theme_combo)
-        theme_group.layout().addWidget(self.current_theme_label)
         self.set_current_theme(current_theme_name)
 
         saved_notes_group = self._build_group("Saved Notes")
-        saved_notes_hint = QLabel("Open the folder where editable notes are stored.")
-        saved_notes_hint.setObjectName("panelHint")
         self.open_saved_notes_folder_button = QPushButton("Open Saved Notes Folder")
         self.open_saved_notes_folder_button.setObjectName("secondaryAction")
+        self.open_saved_notes_folder_button.setFixedWidth(240)
+        self.open_saved_notes_folder_button.setSizePolicy(
+            QSizePolicy.Fixed,
+            QSizePolicy.Fixed,
+        )
         self.open_saved_notes_folder_button.clicked.connect(on_open_saved_notes_folder)
-        saved_notes_group.layout().addWidget(saved_notes_hint)
         saved_notes_group.layout().addWidget(self.open_saved_notes_folder_button)
 
         cleanup_group = self._build_group("Cleanup")
@@ -71,13 +72,22 @@ class SettingsPage(QWidget):
         cleanup_hint.setObjectName("panelHint")
         self.delete_history_button = QPushButton("Delete All History")
         self.delete_history_button.setObjectName("utilityDanger")
+        self.delete_history_button.setFixedWidth(190)
+        self.delete_history_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.delete_history_button.clicked.connect(on_delete_history)
         self.delete_saved_notes_button = QPushButton("Delete All Saved Notes")
         self.delete_saved_notes_button.setObjectName("utilityDanger")
+        self.delete_saved_notes_button.setFixedWidth(210)
+        self.delete_saved_notes_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.delete_saved_notes_button.clicked.connect(on_delete_saved_notes)
+        cleanup_actions = QHBoxLayout()
+        cleanup_actions.setContentsMargins(0, 0, 0, 0)
+        cleanup_actions.setSpacing(12)
+        cleanup_actions.addWidget(self.delete_history_button)
+        cleanup_actions.addWidget(self.delete_saved_notes_button)
+        cleanup_actions.addStretch()
         cleanup_group.layout().addWidget(cleanup_hint)
-        cleanup_group.layout().addWidget(self.delete_history_button)
-        cleanup_group.layout().addWidget(self.delete_saved_notes_button)
+        cleanup_group.layout().addLayout(cleanup_actions)
 
         layout.addWidget(header)
         layout.addWidget(helper)
@@ -113,11 +123,4 @@ class SettingsPage(QWidget):
 
         theme = self._themes.get(theme_name)
         if theme is None:
-            self.current_theme_label.setText("Current theme: System fallback")
             return
-
-        tokens = theme.tokens
-        self.current_theme_label.setText(
-            "Current theme: "
-            f"{theme.name} | Primary {tokens.primary} | Secondary {tokens.secondary}"
-        )
