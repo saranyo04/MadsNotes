@@ -95,7 +95,6 @@ class MainWindow(QWidget):
         self._theme = get_theme(DEFAULT_THEME_NAME)
         self.setStyleSheet(theme_stylesheet(self._theme))
         self.setWindowTitle(APP_NAME)
-        self.resize(1260, 760)
 
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(20, 18, 20, 18)
@@ -177,12 +176,6 @@ class MainWindow(QWidget):
         self.open_last_saved_button.setIconSize(QSize(18, 18))
         self.open_last_saved_button.clicked.connect(self.handle_open_last_saved_note)
 
-        self.open_saved_notes_button = QPushButton("Open Saved Notes")
-        self.open_saved_notes_button.setObjectName("secondaryAction")
-        self.open_saved_notes_button.setIcon(self._icon("files"))
-        self.open_saved_notes_button.setIconSize(QSize(18, 18))
-        self.open_saved_notes_button.clicked.connect(self.handle_open_saved_notes_folder)
-
         app_title = QLabel(APP_NAME)
         app_title.setObjectName("appTitle")
 
@@ -244,11 +237,13 @@ class MainWindow(QWidget):
             themes=self._themes,
             current_theme_name=self._theme.name,
             on_theme_changed=self.handle_theme_changed,
+            on_open_saved_notes_folder=self.handle_open_saved_notes_folder,
             on_delete_history=self.handle_delete_all_history,
             on_delete_saved_notes=self.handle_delete_all_saved_notes,
         )
 
         self.content_stack = QStackedWidget()
+        self.content_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         self.content_stack.addWidget(home_page)
         self.content_stack.addWidget(self.settings_page)
         main_content.addWidget(self.content_stack, 1)
@@ -271,7 +266,6 @@ class MainWindow(QWidget):
         self.saved_notes_list.itemDoubleClicked.connect(self.handle_saved_note_double_clicked)
         right_utility.addWidget(self.saved_notes_list, 1)
         right_utility.addWidget(self.open_last_saved_button)
-        right_utility.addWidget(self.open_saved_notes_button)
         right_utility.addStretch()
         right_utility_frame.setLayout(right_utility)
 
@@ -300,6 +294,7 @@ class MainWindow(QWidget):
         self.sync_saved_notes_actions()
         self.refresh_saved_notes_list()
         install_shortcuts(self)
+        self._resize_to_available_startup_size(1260, 760)
 
         if initial_file_path:
             QTimer.singleShot(0, lambda: self.handle_launch_file(initial_file_path))
@@ -309,6 +304,46 @@ class MainWindow(QWidget):
 
     def _icon(self, name: str) -> QIcon:
         return QIcon(str(Path(__file__).with_name("icons") / f"{name}.svg"))
+
+    def _resize_to_available_startup_size(
+        self,
+        default_width: int,
+        default_height: int,
+    ) -> None:
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            self.resize(default_width, default_height)
+            return
+
+        if self.layout() is not None:
+            self.layout().activate()
+
+        available = screen.availableGeometry()
+        self.resize(
+            min(default_width, available.width()),
+            min(default_height, available.height()),
+        )
+
+    def fit_visible_frame_to_available_screen(self) -> None:
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+
+        available = screen.availableGeometry()
+        frame = self.frameGeometry()
+        width_overflow = max(0, frame.width() - available.width())
+        height_overflow = max(0, frame.height() - available.height())
+        if width_overflow or height_overflow:
+            self.resize(
+                max(self.minimumWidth(), self.width() - width_overflow),
+                max(self.minimumHeight(), self.height() - height_overflow),
+            )
+            frame = self.frameGeometry()
+
+        x = min(max(frame.x(), available.x()), available.right() - frame.width() + 1)
+        y = min(max(frame.y(), available.y()), available.bottom() - frame.height() + 1)
+        if frame.x() != x or frame.y() != y:
+            self.move(x + self.x() - frame.x(), y + self.y() - frame.y())
 
     def handle_theme_changed(self, theme_name: str) -> None:
         self._theme = self._themes.get(theme_name) or get_theme()
@@ -417,7 +452,6 @@ class MainWindow(QWidget):
         self.settings_page.set_busy(busy)
         if busy:
             self.open_last_saved_button.setEnabled(False)
-            self.open_saved_notes_button.setEnabled(False)
             self.save_note_button.setEnabled(False)
         else:
             self.sync_saved_notes_actions()
@@ -452,7 +486,6 @@ class MainWindow(QWidget):
 
     def sync_saved_notes_actions(self) -> None:
         self.open_last_saved_button.setEnabled(not self._busy)
-        self.open_saved_notes_button.setEnabled(not self._busy)
         self.save_note_button.setEnabled(not self._busy)
 
     def refresh_saved_notes_list(self) -> None:
@@ -745,11 +778,29 @@ class MainWindow(QWidget):
             )
             return
 
-        self._saved_notes.save(
-            text,
-            note_name,
-            rendered_output_path=self._current_rendered_output_path(),
-        )
+        if self._saved_notes.title_exists(note_name):
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "A saved note with this name already exists.\n"
+                "Please choose a different name.",
+            )
+            return
+
+        try:
+            self._saved_notes.save(
+                text,
+                note_name,
+                rendered_output_path=self._current_rendered_output_path(),
+            )
+        except FileExistsError:
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "A saved note with this name already exists.\n"
+                "Please choose a different name.",
+            )
+            return
         self.refresh_saved_notes_list()
 
     def _current_rendered_output_path(self) -> Path | None:
@@ -791,7 +842,7 @@ class MainWindow(QWidget):
             QMessageBox.information(
                 self,
                 APP_NAME,
-                "No generated notes are linked to this saved note yet.",
+                "No generated note exists for this saved note yet.",
             )
             return
 
@@ -914,4 +965,6 @@ def run_app(initial_file_path: str | None = None):
         initial_file_path=initial_file_path,
     )
     window.show()
+    window.fit_visible_frame_to_available_screen()
+    QTimer.singleShot(0, window.fit_visible_frame_to_available_screen)
     sys.exit(app.exec())

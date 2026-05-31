@@ -21,6 +21,7 @@ class SettingsPage(QWidget):
         themes: dict[str, Theme],
         current_theme_name: str,
         on_theme_changed: Callable[[str], None],
+        on_open_saved_notes_folder: Callable[[], None],
         on_delete_history: Callable[[], None],
         on_delete_saved_notes: Callable[[], None],
         parent=None,
@@ -54,6 +55,15 @@ class SettingsPage(QWidget):
         theme_group.layout().addWidget(self.current_theme_label)
         self.set_current_theme(current_theme_name)
 
+        saved_notes_group = self._build_group("Saved Notes")
+        saved_notes_hint = QLabel("Open the folder where editable notes are stored.")
+        saved_notes_hint.setObjectName("panelHint")
+        self.open_saved_notes_folder_button = QPushButton("Open Saved Notes Folder")
+        self.open_saved_notes_folder_button.setObjectName("secondaryAction")
+        self.open_saved_notes_folder_button.clicked.connect(on_open_saved_notes_folder)
+        saved_notes_group.layout().addWidget(saved_notes_hint)
+        saved_notes_group.layout().addWidget(self.open_saved_notes_folder_button)
+
         cleanup_group = self._build_group("Cleanup")
         cleanup_hint = QLabel(
             "History and saved notes are stored separately."
@@ -72,6 +82,7 @@ class SettingsPage(QWidget):
         layout.addWidget(header)
         layout.addWidget(helper)
         layout.addWidget(theme_group)
+        layout.addWidget(saved_notes_group)
         layout.addWidget(cleanup_group)
         layout.addStretch()
         self.setLayout(layout)
@@ -89,6 +100,7 @@ class SettingsPage(QWidget):
         return group
 
     def set_busy(self, busy: bool) -> None:
+        self.open_saved_notes_folder_button.setEnabled(not busy)
         self.delete_history_button.setEnabled(not busy)
         self.delete_saved_notes_button.setEnabled(not busy)
 

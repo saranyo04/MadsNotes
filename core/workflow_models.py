@@ -64,7 +64,7 @@ class WorkflowSession:
         return replace(self, last_output=None)
 
     def cleared_active_state(self) -> "WorkflowSession":
-        return replace(self, source=None, current_document=None)
+        return replace(self, source=None, current_document=None, last_output=None)
 
 
 @dataclass

@@ -58,7 +58,9 @@ class SavedNotesStore:
     ) -> SavedNote:
         notes_path = self.get_notes_path()
         title = self._note_title(note_name)
-        path = self._available_note_path(notes_path, title)
+        path = notes_path / f"{title}.md"
+        if path.exists():
+            raise FileExistsError(path)
         path.write_text(text, encoding="utf-8")
         metadata: dict[str, Any] = {}
         if rendered_output_path is not None:
@@ -67,6 +69,10 @@ class SavedNotesStore:
             self._write_note_metadata(path, metadata)
         modified_at = datetime.fromtimestamp(path.stat().st_mtime)
         return SavedNote(path=path, title=path.stem, modified_at=modified_at)
+
+    def title_exists(self, note_name: str) -> bool:
+        title = self._note_title(note_name)
+        return (self.get_notes_path() / f"{title}.md").exists()
 
     def rendered_output_path(self, note: SavedNote | Path) -> Path | None:
         metadata = self._read_note_metadata(note)
@@ -108,14 +114,6 @@ class SavedNotesStore:
         if title:
             return title
         return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    def _available_note_path(self, notes_path: Path, title: str) -> Path:
-        path = notes_path / f"{title}.md"
-        suffix = 2
-        while path.exists():
-            path = notes_path / f"{title} ({suffix}).md"
-            suffix += 1
-        return path
 
     def delete_all(self) -> int:
         notes_path = self.get_notes_path()
