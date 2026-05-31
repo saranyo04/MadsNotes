@@ -644,7 +644,7 @@ class MainWindow(QWidget):
             QMessageBox.warning(
                 self,
                 APP_NAME,
-                f"Mad's Chinese can open PDF files only.\n\nReceived:\n{path}",
+                f"MadsNotes can open PDF files only.\n\nReceived:\n{path}",
             )
             return
 

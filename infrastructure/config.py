@@ -3,12 +3,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-APP_NAME = "Mad's Chinese"
-APP_SLUG = "madschinese"
-APP_ID = "madschinese.desktop"
+APP_NAME = "MadsNotes"
+APP_DESCRIPTION = "A desktop study tool for (mostly) Chinese-language students."
+APP_SLUG = "madsnotes"
+APP_ID = "madsnotes.desktop"
 
-PRIMARY_WORKSPACE_DIRNAME = "madschinese_workspace"
-LEGACY_WORKSPACE_DIRNAME = "workspace"
+PRIMARY_WORKSPACE_DIRNAME = "madsnotes_workspace"
+LEGACY_WORKSPACE_DIRNAME = "madschinese_workspace"
 HISTORY_DIRNAME = "history"
 SAVED_NOTES_DIRNAME = "saved_notes"
 JOB_FOLDER_PREFIX = "job_"

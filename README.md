@@ -1,8 +1,12 @@
 # MadsNotes
 
+<<<<<<< Updated upstream
 A lightweight desktop study tool for turning PDFs and text into clean, editable study notes.
 
 Designed for fast reading, revision, and browser-based language learning workflows.
+=======
+A desktop study tool for (mostly) Chinese-language students.
+>>>>>>> Stashed changes
 
 ---
 
@@ -10,8 +14,13 @@ Designed for fast reading, revision, and browser-based language learning workflo
 
 1. Open the **Releases** section
 2. Download the latest `.zip`
+<<<<<<< Updated upstream
 3. Extract the archive
 4. Run `MadsNotes.exe`
+=======
+3. Extract the zip 
+4. Double-click `MadsNotes.exe` to run  
+>>>>>>> Stashed changes
 
 No installation required.
 
@@ -22,6 +31,7 @@ No installation required.
 
 ## Features
 
+<<<<<<< Updated upstream
 * Paste text directly into the workspace
 * Upload or drag-and-drop PDFs
 * Automatic PDF text extraction
@@ -55,6 +65,15 @@ Paste Text
 → Browser opens
 → Save Note
 ```
+=======
+- Paste study text
+- Upload or drag-and-drop PDFs
+- Automatic text extraction from PDFs
+- Clean structured output 
+- Built-in editor to fix formatting
+- Generates clean study notes
+- Opens in browser for Zhongwen hover lookup
+>>>>>>> Stashed changes
 
 ---
 
